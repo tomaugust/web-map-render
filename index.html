@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cholsey Parish Map</title>
+<link rel="stylesheet" href="styles.css">
+<script type="importmap">
+{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js" } }
+</script>
+</head>
+<body>
+<canvas id="scene" aria-label="3D terrain map of Cholsey parish. Drag to turn."></canvas>
+<div id="loading">Loading Cholsey…</div>
+<div id="popout" hidden role="dialog" aria-label="Cholsey">
+  <button id="popout-close" aria-label="Close">×</button>
+  <h1>Cholsey</h1>
+  <p class="sub">South Oxfordshire · OX10</p>
+  <dl>
+    <dt>Location</dt><dd id="po-coords"></dd>
+    <dt>Elevation</dt><dd id="po-elev"></dd>
+  </dl>
+  <p class="blurb">A large village and civil parish on the Thames floodplain, with Agatha Christie's grave in St Mary's churchyard.</p>
+</div>
+<p id="hint">Drag to turn · scroll to zoom · click the pin</p>
+<p id="attribution">Map © OpenStreetMap contributors · Elevation: Mapzen/AWS Terrain Tiles · Boundary: OSM</p>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
