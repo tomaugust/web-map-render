@@ -7,6 +7,14 @@ boundary and raised using open elevation data. It floats on a white background a
 - **Pin** – a location pin sits at the centre of the parish; click or tap it for a popout.
 - **Auto-rotate** – slow spin that pauses while the popout is open (off with `prefers-reduced-motion`).
 
+## Rain tab
+
+Switch to **Rain** (or open `#rain`) for a water-flow simulation on the same terrain. Move the mouse to
+steer a rain cloud; drops fall and run downhill (shallow-water "virtual pipes" model on a 220-cell grid
+built from the elevation data), pooling in hollows and draining off the parish edge. Drag to turn,
+use the slider to change rainfall, and **Clear water** to reset. It runs as a time-lapse and is a
+demo, not a hydrological model (coarse ~19 m elevation, no soil or drainage data).
+
 ## Run
 
 No build step. Serve the folder and open it (ES modules need http, not `file://`):
@@ -31,5 +39,6 @@ your own tile source before using this for anything real.
 ## Files
 
 - `src/terrain.js` – fetches/stitches tiles, builds the displaced mesh clipped to the boundary, walls and base.
-- `src/main.js` – scene, lighting, pin, drag/zoom controls, popout.
+- `src/rain.js` – water simulation, cloud, raindrops and water overlay.
+- `src/main.js` – scene, tabs, lighting, pin, drag/zoom controls, popout.
 - `src/geo.js` – Web Mercator helpers.

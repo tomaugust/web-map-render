@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
+import { createRain } from './rain.js';
 
 const canvas = document.getElementById('scene');
 const popout = document.getElementById('popout');
@@ -50,7 +51,9 @@ function makePin() {
   return pin;
 }
 
-let pin, terrain, popOpen = false;
+let pin, terrain, rain, popOpen = false, mode = 'terrain';
+const hintEl = document.getElementById('hint');
+const rainControls = document.getElementById('rain-controls');
 const pinTopWorld = new THREE.Vector3();
 
 async function init() {
@@ -65,7 +68,9 @@ async function init() {
   const [lon, lat] = terrain.centroidLonLat;
   document.getElementById('po-coords').textContent = `${lat.toFixed(4)}° N, ${Math.abs(lon).toFixed(4)}° W`;
   document.getElementById('po-elev').textContent = `${Math.round(terrain.pinHeightM)} m above sea level`;
+  rain = createRain({ terrain, pivot, camera, statsEl: document.getElementById('rain-stats') });
   loading.classList.add('done');
+  if (location.hash === '#rain') setMode('rain');
   window.__ready = true;
 }
 
@@ -107,12 +112,20 @@ canvas.addEventListener('pointerdown', (e) => {
 
 canvas.addEventListener('pointermove', (e) => {
   const p = pointers.get(e.pointerId);
-  if (!p) { canvas.classList.toggle('pointing', pinUnder(e)); return; }
+  if (!p) {
+    if (mode === 'rain') rain.aim(e.clientX, e.clientY, canvas.getBoundingClientRect());
+    else canvas.classList.toggle('pointing', pinUnder(e));
+    return;
+  }
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
   p.x = e.clientX; p.y = e.clientY;
   if (pointers.size === 2) {
     const [a, b] = [...pointers.values()];
     state.dist = clampDist(distStart * pinchStart / Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)));
+    return;
+  }
+  if (mode === 'rain' && e.pointerType === 'touch') { // finger drags the cloud instead of turning the map
+    rain.aim(e.clientX, e.clientY, canvas.getBoundingClientRect());
     return;
   }
   if (down) down.moved += Math.abs(dx) + Math.abs(dy);
@@ -128,7 +141,7 @@ function end(e) {
   if (!pointers.size) {
     state.dragging = false; state.idleFor = 0;
     canvas.classList.remove('dragging');
-    if (down && down.moved < 6) setPopout(pinUnder(e)); // a tap, not a drag
+    if (mode === 'terrain' && down && down.moved < 6) setPopout(pinUnder(e)); // a tap, not a drag
     down = null;
   }
 }
@@ -148,6 +161,31 @@ function setPopout(open) {
 document.getElementById('popout-close').addEventListener('click', () => setPopout(false));
 addEventListener('keydown', (e) => { if (e.key === 'Escape') setPopout(false); });
 
+// ---- Tabs ----
+const savedView = { yaw: 0, pitch: 0 };
+function setMode(next) {
+  if (next === mode || !rain) return;
+  setPopout(false);
+  if (next === 'rain') {
+    savedView.yaw = state.yaw; savedView.pitch = state.pitch;
+    state.yaw = 0; state.pitch = 1.0; state.yawVel = 0;   // north-up, looking down onto the slopes
+    rain.enter();
+  } else {
+    rain.exit();
+    state.yaw = savedView.yaw; state.pitch = savedView.pitch;
+  }
+  mode = next;
+  pin.visible = mode === 'terrain';
+  rainControls.hidden = mode !== 'rain';
+  hintEl.textContent = mode === 'rain' ? 'Move the mouse to steer the cloud · drag to turn' : 'Drag to turn · scroll to zoom · click the pin';
+  canvas.classList.toggle('raining', mode === 'rain');
+  document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
+  history.replaceState(null, '', mode === 'rain' ? '#rain' : location.pathname);
+}
+document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
+document.getElementById('rain-rate').addEventListener('input', (e) => rain.setIntensity(+e.target.value));
+document.getElementById('rain-reset').addEventListener('click', () => rain.reset());
+
 // ---- Loop ----
 let last = performance.now();
 const v = new THREE.Vector3();
@@ -159,13 +197,14 @@ function frame() {
   if (!state.dragging) {
     state.idleFor += dt;
     // Flick momentum eases toward the slow auto-spin (or stops while the popout is open).
-    const target = popOpen ? 0 : AUTO_SPEED;
+    const target = popOpen || mode === 'rain' ? 0 : AUTO_SPEED;
     state.yawVel += (target - state.yawVel) * (1 - Math.exp(-dt / 1.2));
     state.yaw += state.yawVel * dt;
   }
   pivot.rotation.set(state.pitch, state.yaw, 0);
   camera.position.set(0, 0, state.dist * (camera.userData.fit || 1));
   camera.lookAt(0, 0, 0);
+  if (mode === 'rain') rain.update(dt);
   if (pin) {
     pin.position.y = terrain.pinY + Math.sin(t * 2) * 0.03 + 0.03;
     if (popOpen) {
@@ -190,3 +229,5 @@ window.__pinScreen = () => {
   const p = pin.localToWorld(new THREE.Vector3(0, pin.userData.h, 0)).project(camera);
   return { x: (p.x * 0.5 + 0.5) * innerWidth, y: (-p.y * 0.5 + 0.5) * innerHeight };
 };
+window.__setMode = setMode;
+window.__rain = () => rain;

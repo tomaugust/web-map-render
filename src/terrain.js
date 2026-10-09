@@ -198,7 +198,37 @@ export async function buildTerrain(geojson, renderer) {
 
   // Pin location = polygon centroid (origin in local XZ).
   const pinHeightM = sample(cu, cv);
+  // Sim-resolution view of the same data: heights (m) and an inside-the-parish mask per cell.
+  function gridData(gw) {
+    const gh = Math.max(2, Math.round(gw * depthKm / widthKm));
+    const heights = new Float32Array(gw * gh);
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+      heights[j * gw + i] = sample(u0 + (u1 - u0) * (i + 0.5) / gw, v0 + (v1 - v0) * (j + 0.5) / gh);
+    }
+    const c = document.createElement('canvas');
+    c.width = gw; c.height = gh;
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.fillStyle = '#fff'; x.beginPath();
+    uv.forEach(([u, v], i) => {
+      const px = (u - u0) / (u1 - u0) * gw, py = (v - v0) / (v1 - v0) * gh;
+      i ? x.lineTo(px, py) : x.moveTo(px, py);
+    });
+    x.closePath(); x.fill();
+    const a = x.getImageData(0, 0, gw, gh).data;
+    const inside = new Uint8Array(gw * gh);
+    for (let i = 0; i < inside.length; i++) inside[i] = a[i * 4] > 127 ? 1 : 0;
+    return { gw, gh, heights, inside, cellM: (widthKm * UNIT) / gw };
+  }
+
   return {
+    top,
+    gridData,
+    // Scene-space terrain height at local (x,z) km, for ray picking and placing objects.
+    surfaceY: (x, z) => yOf(sample(cu + x / M, cv + z / M)),
+    // Local (x,z) km -> fraction across the bounding box (0..1 each way, z grows south).
+    bboxFrac: (x, z) => [(cu + x / M - u0) / (u1 - u0), (cv + z / M - v0) / (v1 - v0)],
+    widthKm,
+    depthKm,
     group,
     pinY: yOf(pinHeightM),
     pinHeightM,
