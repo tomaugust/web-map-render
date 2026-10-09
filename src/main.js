@@ -77,7 +77,7 @@ async function init() {
   document.getElementById('po-coords').textContent = `${lat.toFixed(4)}° N, ${Math.abs(lon).toFixed(4)}° W`;
   document.getElementById('po-elev').textContent = `${Math.round(terrain.pinHeightM)} m above sea level`;
   rain = createRain({ terrain, pivot, camera, statsEl: document.getElementById('rain-stats') });
-  smoke = createSmoke({ terrain, pivot, camera, renderer, ui: {
+  smoke = createSmoke({ terrain, pivot, camera, renderer, lightDir: sun.position, ui: {
     onWind: (w) => { windUI.nowFrom = w.fromDeg; document.getElementById('wind-now').textContent = w.text; },
   } });
   loading.classList.add('done');

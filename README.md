@@ -21,8 +21,12 @@ Switch to **Smoke** (or open `#smoke`). A model factory sits on the map (click a
 emits smoke from its main stack. Controls: **wind speed** (0-20 m/s), **wind from** (compass bearing) and
 **direction constancy** (100% = steady wind, a straight plume; low = the wind direction and gusts
 wander, so the plume snakes and swings). The compass shows the set wind (faint) and the live wind (blue).
-Smoke is a particle model (advection by the wind each puff was released into, turbulent diffusion,
-buoyant rise that bends over in strong wind) shown as a x30 time-lapse. It is illustrative, not a dispersion model.
+The smoke is a GPU particle simulation (about 147,000 particles, `?n=256` etc. in the URL changes the
+count): hot smoke rises on buoyancy while entrainment cools and slows it, strong wind bends the plume
+over, and a divergence-free curl-noise field adds swirling eddies that grow with the plume's age so it
+billows further downwind. Puffs are drawn as soft, sun-lit sprites that lighten as they dilute. It
+needs WebGL2 with float render targets (most desktop browsers). Shown as a x30 time-lapse; it is
+illustrative, not a dispersion model.
 
 ## Run
 
