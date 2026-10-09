@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { createPicker } from './pick.js';
 
 // Shallow-water ("virtual pipes") simulation over the parish heights.
 const G = 9.8;
@@ -195,22 +196,10 @@ export function createRain({ terrain, pivot, camera, statsEl }) {
     dropGeo.attributes.position.needsUpdate = true;
   }
 
-  // Mouse -> terrain: march the pointer ray (in map space) until it dips below the surface.
-  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-  const o = new THREE.Vector3(), t = new THREE.Vector3();
-  const hw = terrain.widthKm / 2 + 0.3, hd = terrain.depthKm / 2 + 0.3;
+  const pick = createPicker({ terrain, pivot, camera });
   function aim(clientX, clientY, rect) {
-    ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-    ray.setFromCamera(ndc, camera);
-    pivot.updateMatrixWorld(true);
-    const a = pivot.worldToLocal(ray.ray.origin.clone());
-    const b = pivot.worldToLocal(ray.ray.origin.clone().add(ray.ray.direction));
-    t.copy(b).sub(a).normalize();
-    for (let s = 0; s < 1800; s++) {
-      o.copy(a).addScaledVector(t, s * 0.04);
-      if (Math.abs(o.x) > hw || Math.abs(o.z) > hd) continue;
-      if (o.y <= terrain.surfaceY(o.x, o.z)) { cloudTarget.set(o.x, o.z); return; }
-    }
+    const hit = pick(clientX, clientY, rect);
+    if (hit) cloudTarget.set(hit[0], hit[1]);
   }
 
   function update(dt) {

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
 import { createRain } from './rain.js';
+import { createSmoke } from './smoke.js';
 
 const canvas = document.getElementById('scene');
 const popout = document.getElementById('popout');
@@ -51,9 +52,16 @@ function makePin() {
   return pin;
 }
 
-let pin, terrain, rain, popOpen = false, mode = 'terrain';
+let pin, terrain, rain, smoke, popOpen = false, mode = 'terrain';
 const hintEl = document.getElementById('hint');
-const rainControls = document.getElementById('rain-controls');
+const panels = { rain: document.getElementById('rain-controls'), smoke: document.getElementById('smoke-controls') };
+const HINTS = {
+  terrain: 'Drag to turn · scroll to zoom · click the pin',
+  rain: 'Move the mouse to steer the cloud · drag to turn',
+  smoke: 'Click the map to place the factory · drag to turn',
+};
+const VIEWS = { rain: { yaw: 0, pitch: 1.0 }, smoke: { yaw: 0, pitch: 0.85 } };
+const windUI = { nowFrom: 225, setFrom: 225 };
 const pinTopWorld = new THREE.Vector3();
 
 async function init() {
@@ -69,8 +77,12 @@ async function init() {
   document.getElementById('po-coords').textContent = `${lat.toFixed(4)}° N, ${Math.abs(lon).toFixed(4)}° W`;
   document.getElementById('po-elev').textContent = `${Math.round(terrain.pinHeightM)} m above sea level`;
   rain = createRain({ terrain, pivot, camera, statsEl: document.getElementById('rain-stats') });
+  smoke = createSmoke({ terrain, pivot, camera, renderer, ui: {
+    onWind: (w) => { windUI.nowFrom = w.fromDeg; document.getElementById('wind-now').textContent = w.text; },
+  } });
   loading.classList.add('done');
-  if (location.hash === '#rain') setMode('rain');
+  const hashMode = location.hash.slice(1);
+  if (hashMode === 'rain' || hashMode === 'smoke') setMode(hashMode);
   window.__ready = true;
 }
 
@@ -114,7 +126,7 @@ canvas.addEventListener('pointermove', (e) => {
   const p = pointers.get(e.pointerId);
   if (!p) {
     if (mode === 'rain') rain.aim(e.clientX, e.clientY, canvas.getBoundingClientRect());
-    else canvas.classList.toggle('pointing', pinUnder(e));
+    else if (mode === 'terrain') canvas.classList.toggle('pointing', pinUnder(e));
     return;
   }
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -141,7 +153,10 @@ function end(e) {
   if (!pointers.size) {
     state.dragging = false; state.idleFor = 0;
     canvas.classList.remove('dragging');
-    if (mode === 'terrain' && down && down.moved < 6) setPopout(pinUnder(e)); // a tap, not a drag
+    if (down && down.moved < 6) { // a tap, not a drag
+      if (mode === 'terrain') setPopout(pinUnder(e));
+      else if (mode === 'smoke') smoke.click(e.clientX, e.clientY, canvas.getBoundingClientRect());
+    }
     down = null;
   }
 }
@@ -163,28 +178,44 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape') setPopout(false); }
 
 // ---- Tabs ----
 const savedView = { yaw: 0, pitch: 0 };
+const modules = () => ({ rain, smoke });
 function setMode(next) {
   if (next === mode || !rain) return;
   setPopout(false);
-  if (next === 'rain') {
-    savedView.yaw = state.yaw; savedView.pitch = state.pitch;
-    state.yaw = 0; state.pitch = 1.0; state.yawVel = 0;   // north-up, looking down onto the slopes
-    rain.enter();
-  } else {
-    rain.exit();
-    state.yaw = savedView.yaw; state.pitch = savedView.pitch;
-  }
+  const mods = modules();
+  if (mode === 'terrain') { savedView.yaw = state.yaw; savedView.pitch = state.pitch; }
+  else mods[mode].exit();
+  if (next === 'terrain') { state.yaw = savedView.yaw; state.pitch = savedView.pitch; }
+  else { Object.assign(state, VIEWS[next], { yawVel: 0 }); mods[next].enter(); }
   mode = next;
   pin.visible = mode === 'terrain';
-  rainControls.hidden = mode !== 'rain';
-  hintEl.textContent = mode === 'rain' ? 'Move the mouse to steer the cloud · drag to turn' : 'Drag to turn · scroll to zoom · click the pin';
+  for (const [name, el] of Object.entries(panels)) el.hidden = name !== mode;
+  hintEl.textContent = HINTS[mode];
   canvas.classList.toggle('raining', mode === 'rain');
+  canvas.classList.toggle('placing', mode === 'smoke');
   document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
-  history.replaceState(null, '', mode === 'rain' ? '#rain' : location.pathname);
+  history.replaceState(null, '', mode === 'terrain' ? location.pathname : '#' + mode);
 }
 document.querySelectorAll('#tabs button').forEach((b) => b.addEventListener('click', () => setMode(b.dataset.mode)));
 document.getElementById('rain-rate').addEventListener('input', (e) => rain.setIntensity(+e.target.value));
 document.getElementById('rain-reset').addEventListener('click', () => rain.reset());
+
+// Smoke controls
+const CARDS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+const $ = (id) => document.getElementById(id);
+$('wind-speed').addEventListener('input', (e) => { smoke.setSpeed(+e.target.value); $('wind-speed-out').textContent = `${e.target.value} m/s`; });
+$('wind-dir').addEventListener('input', (e) => {
+  const d = +e.target.value; smoke.setFrom(d); windUI.setFrom = d;
+  $('wind-dir-out').textContent = `${d}° ${CARDS[Math.round(d / 22.5) % 16]}`;
+});
+$('wind-const').addEventListener('input', (e) => { smoke.setConstancy(+e.target.value / 100); $('wind-const-out').textContent = `${e.target.value}%`; });
+$('smoke-clear').addEventListener('click', () => smoke.clear());
+function updateCompass() {
+  // The dial turns with the map; arrows point the way the air is moving.
+  $('compass-dial').style.transform = `rotate(${-state.yaw * 180 / Math.PI}deg)`;
+  $('arrow-now').style.transform = `rotate(${windUI.nowFrom + 180}deg)`;
+  $('arrow-set').style.transform = `rotate(${windUI.setFrom + 180}deg)`;
+}
 
 // ---- Loop ----
 let last = performance.now();
@@ -197,7 +228,7 @@ function frame() {
   if (!state.dragging) {
     state.idleFor += dt;
     // Flick momentum eases toward the slow auto-spin (or stops while the popout is open).
-    const target = popOpen || mode === 'rain' ? 0 : AUTO_SPEED;
+    const target = popOpen || mode !== 'terrain' ? 0 : AUTO_SPEED;
     state.yawVel += (target - state.yawVel) * (1 - Math.exp(-dt / 1.2));
     state.yaw += state.yawVel * dt;
   }
@@ -205,6 +236,7 @@ function frame() {
   camera.position.set(0, 0, state.dist * (camera.userData.fit || 1));
   camera.lookAt(0, 0, 0);
   if (mode === 'rain') rain.update(dt);
+  if (mode === 'smoke') { smoke.update(dt); updateCompass(); }
   if (pin) {
     pin.position.y = terrain.pinY + Math.sin(t * 2) * 0.03 + 0.03;
     if (popOpen) {

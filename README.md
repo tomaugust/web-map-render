@@ -15,6 +15,15 @@ built from the elevation data), pooling in hollows and draining off the parish e
 use the slider to change rainfall, and **Clear water** to reset. It runs as a time-lapse and is a
 demo, not a hydrological model (coarse ~19 m elevation, no soil or drainage data).
 
+## Smoke tab
+
+Switch to **Smoke** (or open `#smoke`). A model factory sits on the map (click anywhere to move it) and
+emits smoke from its main stack. Controls: **wind speed** (0-20 m/s), **wind from** (compass bearing) and
+**direction constancy** (100% = steady wind, a straight plume; low = the wind direction and gusts
+wander, so the plume snakes and swings). The compass shows the set wind (faint) and the live wind (blue).
+Smoke is a particle model (advection by the wind each puff was released into, turbulent diffusion,
+buoyant rise that bends over in strong wind) shown as a x30 time-lapse. It is illustrative, not a dispersion model.
+
 ## Run
 
 No build step. Serve the folder and open it (ES modules need http, not `file://`):
@@ -40,5 +49,7 @@ your own tile source before using this for anything real.
 
 - `src/terrain.js` – fetches/stitches tiles, builds the displaced mesh clipped to the boundary, walls and base.
 - `src/rain.js` – water simulation, cloud, raindrops and water overlay.
+- `src/smoke.js` – factory model, wind model and smoke particles.
+- `src/pick.js` – pointer-to-terrain picking shared by the Rain and Smoke tabs.
 - `src/main.js` – scene, tabs, lighting, pin, drag/zoom controls, popout.
 - `src/geo.js` – Web Mercator helpers.

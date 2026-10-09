@@ -39,3 +39,17 @@ html, body { margin: 0; height: 100%; background: #fff; color: #1f2933;
 #rain-controls button { font: inherit; padding: 5px 10px; border: 1px solid #ccd; border-radius: 6px; background: #f8f9fa; cursor: pointer; }
 #rain-stats { margin: 0; color: #667; font-size: 12px; font-variant-numeric: tabular-nums; }
 #scene.raining { cursor: default; }
+
+#smoke-controls { position: fixed; left: 16px; bottom: 34px; z-index: 6; padding: 10px 14px; background: #fff;
+  border-radius: 10px; box-shadow: 0 2px 14px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.06); font-size: 13px;
+  display: grid; gap: 8px; width: 350px; max-width: calc(100vw - 32px); }
+#smoke-controls[hidden] { display: none; }
+#smoke-controls label { display: grid; grid-template-columns: 8.5em 1fr 6em; align-items: center; gap: 8px; }
+#smoke-controls output { color: #556; font-variant-numeric: tabular-nums; text-align: right; }
+#smoke-controls button { font: inherit; padding: 5px 10px; border: 1px solid #ccd; border-radius: 6px; background: #f8f9fa; cursor: pointer; }
+#smoke-controls .compass-row { display: flex; align-items: center; gap: 12px; }
+#compass { width: 64px; height: 64px; flex: none; }
+#compass-dial { transform-origin: 0 0; }
+#compass-dial g[id^="arrow"] { transform-origin: 0 0; }
+#wind-now, #smoke-controls .note { margin: 0; color: #556; font-size: 12px; }
+#scene.placing { cursor: crosshair; }

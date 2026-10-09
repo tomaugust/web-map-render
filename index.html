@@ -14,6 +14,7 @@
 <nav id="tabs" role="tablist">
   <button role="tab" id="tab-terrain" data-mode="terrain" aria-selected="true">Terrain</button>
   <button role="tab" id="tab-rain" data-mode="rain" aria-selected="false">Rain</button>
+  <button role="tab" id="tab-smoke" data-mode="smoke" aria-selected="false">Smoke</button>
 </nav>
 <div id="loading">Loading Cholsey…</div>
 <div id="popout" hidden role="dialog" aria-label="Cholsey">
@@ -31,6 +32,24 @@
   <label>Rainfall <input id="rain-rate" type="range" min="0.2" max="3" step="0.1" value="1"></label>
   <button id="rain-reset" type="button">Clear water</button>
   <p id="rain-stats"></p>
+</div>
+<div id="smoke-controls" hidden>
+  <div class="compass-row">
+    <svg id="compass" viewBox="-40 -40 80 80" aria-label="Wind direction">
+      <g id="compass-dial">
+        <circle r="34" fill="#fff" stroke="#ccd" />
+        <text y="-23" text-anchor="middle" font-size="9" fill="#889">N</text>
+        <g id="arrow-set" opacity=".35"><path d="M0 -26 L5 -14 L1.5 -14 L1.5 22 L-1.5 22 L-1.5 -14 L-5 -14 Z" fill="#1f2933"/></g>
+        <g id="arrow-now"><path d="M0 -26 L5 -14 L1.5 -14 L1.5 22 L-1.5 22 L-1.5 -14 L-5 -14 Z" fill="#2f7fe0"/></g>
+      </g>
+    </svg>
+    <p id="wind-now">Wind</p>
+  </div>
+  <label>Wind speed <input id="wind-speed" type="range" min="0" max="20" step="0.5" value="5"><output id="wind-speed-out">5 m/s</output></label>
+  <label>Wind from <input id="wind-dir" type="range" min="0" max="359" step="1" value="225"><output id="wind-dir-out">225° SW</output></label>
+  <label>Direction constancy <input id="wind-const" type="range" min="0" max="100" step="1" value="70"><output id="wind-const-out">70%</output></label>
+  <button id="smoke-clear" type="button">Clear smoke</button>
+  <p class="note">Click the map to move the factory · time-lapse ×30</p>
 </div>
 <p id="attribution">Map © OpenStreetMap contributors · Elevation: Mapzen/AWS Terrain Tiles · Boundary: OSM</p>
 <script type="module" src="src/main.js"></script>
