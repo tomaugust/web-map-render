@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
 import { createRain } from './rain.js';
 import { createSmoke } from './smoke.js';
+import { createWildfire } from './fire.js';
 
 const canvas = document.getElementById('scene');
 const popout = document.getElementById('popout');
@@ -53,15 +54,16 @@ function makePin() {
   return pin;
 }
 
-let pin, terrain, rain, smoke, popOpen = false, mode = 'terrain';
+let pin, terrain, rain, smoke, fire, popOpen = false, mode = 'terrain';
 const hintEl = document.getElementById('hint');
-const panels = { rain: document.getElementById('rain-controls'), smoke: document.getElementById('smoke-controls') };
+const panels = { rain: document.getElementById('rain-controls'), smoke: document.getElementById('smoke-controls'), fire: document.getElementById('fire-controls') };
 const HINTS = {
   terrain: 'Drag to turn · scroll to zoom · click the pin',
   rain: 'Move the mouse to steer the cloud · drag to turn',
   smoke: 'Click the map to place the factory · drag to turn',
+  fire: 'Tap the map to start a wildfire · drag to turn',
 };
-const VIEWS = { rain: { yaw: 0, pitch: 1.0 }, smoke: { yaw: 0, pitch: 0.85 } };
+const VIEWS = { rain: { yaw: 0, pitch: 1.0 }, smoke: { yaw: 0, pitch: 0.85 }, fire: { yaw: 0, pitch: 0.95 } };
 const windUI = { nowFrom: 225, setFrom: 225 };
 const pinTopWorld = new THREE.Vector3();
 
@@ -82,9 +84,12 @@ async function init() {
     onInfo: (t) => { document.getElementById('smoke-info').textContent = t; },
     onWind: (w) => { windUI.nowFrom = w.fromDeg; document.getElementById('wind-now').textContent = w.text; },
   } });
+  fire = createWildfire({ terrain, pivot, camera, renderer, lightDir: sun.position, ui: {
+    onStats: (t) => { document.getElementById('fire-stats').textContent = t; },
+  } });
   loading.classList.add('done');
   const hashMode = location.hash.slice(1);
-  if (hashMode === 'rain' || hashMode === 'smoke') setMode(hashMode);
+  if (hashMode === 'rain' || hashMode === 'smoke' || hashMode === 'fire') setMode(hashMode);
   window.__ready = true;
 }
 
@@ -172,6 +177,7 @@ function end(e) {
     if (down && down.moved < 6) { // a tap, not a drag
       if (mode === 'terrain') setPopout(pinUnder(e));
       else if (mode === 'smoke') smoke.click(e.clientX, e.clientY, canvas.getBoundingClientRect());
+      else if (mode === 'fire') fire.click(e.clientX, e.clientY, canvas.getBoundingClientRect());
     }
     down = null;
   }
@@ -194,7 +200,7 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape') setPopout(false); }
 
 // ---- Tabs ----
 const savedView = { yaw: 0, pitch: 0 };
-const modules = () => ({ rain, smoke });
+const modules = () => ({ rain, smoke, fire });
 function setMode(next) {
   if (next === mode || !rain) return;
   setPopout(false);
@@ -208,7 +214,7 @@ function setMode(next) {
   for (const [name, el] of Object.entries(panels)) el.hidden = name !== mode;
   hintEl.textContent = HINTS[mode];
   canvas.classList.toggle('raining', mode === 'rain');
-  canvas.classList.toggle('placing', mode === 'smoke');
+  canvas.classList.toggle('placing', mode === 'smoke' || mode === 'fire');
   document.querySelectorAll('#tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mode === mode)));
   history.replaceState(null, '', mode === 'terrain' ? location.pathname : '#' + mode);
 }
@@ -226,6 +232,13 @@ $('wind-dir').addEventListener('input', (e) => {
 });
 $('wind-const').addEventListener('input', (e) => { smoke.setConstancy(+e.target.value / 100); $('wind-const-out').textContent = `${e.target.value}%`; });
 $('smoke-clear').addEventListener('click', () => smoke.clear());
+$('fire-wind').addEventListener('input', (e) => { fire.setWindSpeed(+e.target.value); $('fire-wind-out').textContent = `${e.target.value} m/s`; });
+$('fire-dir').addEventListener('input', (e) => {
+  const d = +e.target.value; fire.setWindFrom(d);
+  $('fire-dir-out').textContent = `${d}° ${CARDS[Math.round(d / 22.5) % 16]}`;
+});
+$('fire-fuel').addEventListener('change', (e) => { fire.setShowFuel(e.target.checked); $('fire-legend').hidden = !e.target.checked; });
+$('fire-reset').addEventListener('click', () => fire.reset());
 function updateCompass() {
   // The dial turns with the map; arrows point the way the air is moving.
   $('compass-dial').style.transform = `rotate(${-state.yaw * 180 / Math.PI}deg)`;
@@ -254,6 +267,7 @@ function frame() {
   camera.lookAt(0, 0, 0);
   if (mode === 'rain') rain.update(dt);
   if (mode === 'smoke') { smoke.update(dt); updateCompass(); }
+  if (mode === 'fire') fire.update(dt);
   if (pin) {
     pin.position.y = terrain.pinY + Math.sin(t * 2) * 0.03 + 0.03;
     if (popOpen) {
@@ -281,3 +295,4 @@ window.__pinScreen = () => {
 window.__setMode = setMode;
 window.__rain = () => rain;
 window.__smoke = () => smoke;
+window.__fire = () => fire;

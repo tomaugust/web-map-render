@@ -54,3 +54,14 @@ html, body { margin: 0; height: 100%; background: #fff; color: #1f2933;
 #wind-now, #smoke-controls .note { margin: 0; color: #556; font-size: 12px; }
 #scene.placing { cursor: crosshair; }
 #smoke-info { word-break: break-word; font-size: 11px !important; color: #889 !important; }
+
+#fire-controls { position: fixed; left: 16px; bottom: 34px; z-index: 6; padding: 10px 14px; background: #fff;
+  border-radius: 10px; box-shadow: 0 2px 14px rgba(0,0,0,.15), 0 0 0 1px rgba(0,0,0,.06); font-size: 13px;
+  display: grid; gap: 8px; width: 350px; max-width: calc(100vw - 32px); }
+#fire-controls[hidden] { display: none; }
+#fire-controls label { display: grid; grid-template-columns: 8.5em 1fr 6em; align-items: center; gap: 8px; }
+#fire-controls label.check { display: flex; gap: 8px; }
+#fire-controls output { color: #556; font-variant-numeric: tabular-nums; text-align: right; }
+#fire-controls button { font: inherit; padding: 5px 10px; border: 1px solid #ccd; border-radius: 6px; background: #f8f9fa; cursor: pointer; }
+#fire-controls .note { margin: 0; color: #556; font-size: 12px; }
+#fire-controls .note[hidden] { display: none; }

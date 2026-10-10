@@ -15,8 +15,9 @@
 <canvas id="scene" aria-label="3D terrain map of Cholsey parish. Drag to turn."></canvas>
 <nav id="tabs" role="tablist">
   <button role="tab" id="tab-terrain" data-mode="terrain" aria-selected="true">Terrain</button>
-  <button role="tab" id="tab-rain" data-mode="rain" aria-selected="false">Rain</button>
-  <button role="tab" id="tab-smoke" data-mode="smoke" aria-selected="false">Smoke</button>
+  <button role="tab" id="tab-rain" data-mode="rain" aria-selected="false">River flow</button>
+  <button role="tab" id="tab-smoke" data-mode="smoke" aria-selected="false">Pollution</button>
+  <button role="tab" id="tab-fire" data-mode="fire" aria-selected="false">Wildfire</button>
 </nav>
 <div id="loading">Loading Cholsey…</div>
 <div id="popout" hidden role="dialog" aria-label="Cholsey">
@@ -53,6 +54,14 @@
   <button id="smoke-clear" type="button">Clear smoke</button>
   <p id="smoke-info" class="note"></p>
   <p class="note">Click the map to move the factory · time-lapse ×30</p>
+</div>
+<div id="fire-controls" hidden>
+  <label>Wind speed <input id="fire-wind" type="range" min="0" max="15" step="0.5" value="4"><output id="fire-wind-out">4 m/s</output></label>
+  <label>Wind from <input id="fire-dir" type="range" min="0" max="359" step="1" value="225"><output id="fire-dir-out">225° SW</output></label>
+  <label class="check"><input id="fire-fuel" type="checkbox"> Show what can burn</label>
+  <button id="fire-reset" type="button">Put out fire</button>
+  <p id="fire-stats" class="note">Tap the map to start a fire</p>
+  <p id="fire-legend" class="note" hidden>Green: burns well · pale: weak fuel · grey: built-up · orange: road/rail · blue: water</p>
 </div>
 <p id="attribution">Map © OpenStreetMap contributors · Elevation: Mapzen/AWS Terrain Tiles · Boundary: OSM</p>
 <script type="module" src="src/main.js"></script>

@@ -162,7 +162,8 @@ export async function buildTerrain(geojson, renderer) {
   });
   mctx.closePath(); mctx.fill();
 
-  const colour = new THREE.CanvasTexture(cropTo(img, u0, u1, v0, v1, tw, th));
+  const imageryCanvas = cropTo(img, u0, u1, v0, v1, tw, th);
+  const colour = new THREE.CanvasTexture(imageryCanvas);
   colour.colorSpace = THREE.SRGBColorSpace;
   colour.anisotropy = renderer.capabilities.getMaxAnisotropy();
   const alpha = new THREE.CanvasTexture(mask);
@@ -224,6 +225,7 @@ export async function buildTerrain(geojson, renderer) {
   return {
     top,
     gridData,
+    imagery: imageryCanvas,     // the map picture draped on the terrain (colour = land use)
     // Scene-space terrain height at local (x,z) km, for ray picking and placing objects.
     surfaceY: (x, z) => yOf(sample(ou + x / M, ov + z / M)),
     // Local (x,z) km -> fraction across the bounding box (0..1 each way, z grows south).
