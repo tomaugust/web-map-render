@@ -12,6 +12,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setClearColor(0xffffff, 1);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 
+let lastInset = null;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 200);
 scene.add(new THREE.HemisphereLight(0xffffff, 0xcfc8b8, 1.6));
@@ -70,7 +71,7 @@ async function init() {
   console.log('tiles', terrain.tilesOk);
   pivot.add(terrain.group);
   pin = makePin();
-  pin.position.set(0, terrain.pinY, 0);
+  pin.position.set(terrain.centroidXZ[0], terrain.pinY, terrain.centroidXZ[1]);
   pivot.add(pin);
   state.dist = Math.max(10, terrain.radius * 2.6);
   const [lon, lat] = terrain.centroidLonLat;
@@ -93,6 +94,20 @@ function resize() {
   // On tall/narrow screens pull back so the whole parish still fits.
   camera.userData.fit = Math.max(1, 1.15 / camera.aspect);
   camera.updateProjectionMatrix();
+  lastInset = null;
+}
+
+// On tall (phone) screens the tabs at the top and the control panel at the bottom eat into the
+// view, so shift the camera window to keep the map centred in the space that is left.
+function fitToVisibleArea() {
+  const w = innerWidth, h = innerHeight;
+  const panel = Object.values(panels).find((el) => !el.hidden);
+  const bottom = w < 700 && panel ? panel.offsetHeight + 30 : 0;
+  const top = 64;
+  const inset = Math.round((bottom - top) / 2);
+  if (inset === lastInset) return;
+  lastInset = inset;
+  camera.setViewOffset(w, h, 0, inset, w, h);
 }
 addEventListener('resize', resize);
 resize();
@@ -232,6 +247,7 @@ function frame() {
     state.yawVel += (target - state.yawVel) * (1 - Math.exp(-dt / 1.2));
     state.yaw += state.yawVel * dt;
   }
+  fitToVisibleArea();
   pivot.rotation.set(state.pitch, state.yaw, 0);
   camera.position.set(0, 0, state.dist * (camera.userData.fit || 1));
   camera.lookAt(0, 0, 0);

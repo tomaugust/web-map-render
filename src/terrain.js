@@ -102,9 +102,10 @@ export async function buildTerrain(geojson, renderer) {
   const u0 = Math.min(...us), u1 = Math.max(...us);
   const v0 = Math.min(...vs), v1 = Math.max(...vs);
   const [cu, cv] = centroid(uv);
+  const ou = (u0 + u1) / 2, ov = (v0 + v1) / 2;    // origin = middle of the bounding box, so the shape turns about its visual centre
   const lat0 = (ring.reduce((s, p) => s + p[1], 0)) / ring.length;
   const M = metresPerUnit(lat0) / UNIT;           // km per mercator unit
-  const toXZ = ([u, v]) => [(u - cu) * M, (v - cv) * M];
+  const toXZ = ([u, v]) => [(u - ou) * M, (v - ov) * M];
 
   const [elev, img] = await Promise.all([
     mosaic(TERRARIUM, ELEV_ZOOM, u0, u1, v0, v1),
@@ -224,9 +225,10 @@ export async function buildTerrain(geojson, renderer) {
     top,
     gridData,
     // Scene-space terrain height at local (x,z) km, for ray picking and placing objects.
-    surfaceY: (x, z) => yOf(sample(cu + x / M, cv + z / M)),
+    surfaceY: (x, z) => yOf(sample(ou + x / M, ov + z / M)),
     // Local (x,z) km -> fraction across the bounding box (0..1 each way, z grows south).
-    bboxFrac: (x, z) => [(cu + x / M - u0) / (u1 - u0), (cv + z / M - v0) / (v1 - v0)],
+    bboxFrac: (x, z) => [(ou + x / M - u0) / (u1 - u0), (ov + z / M - v0) / (v1 - v0)],
+    centroidXZ: [(cu - ou) * M, (cv - ov) * M],   // where the pin goes
     widthKm,
     depthKm,
     group,

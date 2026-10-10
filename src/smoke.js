@@ -66,7 +66,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
     fpos.set(x, z);
     factory.position.set(x, terrain.surfaceY(x, z), z);
   }
-  place(0, 0);
+  place(terrain.centroidXZ[0], terrain.centroidXZ[1]);
   factory.visible = false;
   pivot.add(factory);
 
