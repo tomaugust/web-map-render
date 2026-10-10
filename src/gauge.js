@@ -7,6 +7,8 @@ import * as THREE from 'three';
 const WINDOW_S = 5 * 3600;          // chart shows the last five simulated hours
 const SMOOTH = 0.25;                // chart smoothing per sample (the raw flux flickers a little)
 const EDGE_CELLS = 3;               // keep clear of the parish boundary (the sim drains there)
+const REACH = 3;                    // the gauge averages river cells within this many cells (about 100 m) of the post
+const REACH_SIGMA = 1.8;            // ... weighted towards the middle
 
 export function createGauge({ terrain, pivot, camera, sim, grid, ui }) {
   const { gw, gh } = grid, n = gw * gh;
@@ -60,8 +62,10 @@ export function createGauge({ terrain, pivot, camera, sim, grid, ui }) {
   post.position.y = 0.06;
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.03, 0.012), new THREE.MeshStandardMaterial({ color: 0x00897b, roughness: 0.5 }));
   head.position.set(0.03, 0.115, 0);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(0.035, 0.05, 32), new THREE.MeshBasicMaterial({ color: 0x00897b, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false }));
-  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.004;
+  // The ring marks the reach the gauge averages over.
+  const reachKm = ((REACH + 0.5) * grid.cellM) / 1000;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(reachKm * 0.86, reachKm, 48), new THREE.MeshBasicMaterial({ color: 0x00897b, transparent: true, opacity: 0.8, side: THREE.DoubleSide, depthWrite: false, depthTest: false }));
+  ring.rotation.x = -Math.PI / 2; ring.position.y = 0.01; ring.renderOrder = 6;
   marker.add(post, head, ring);
   marker.visible = false;
   pivot.add(marker);
@@ -79,9 +83,26 @@ export function createGauge({ terrain, pivot, camera, sim, grid, ui }) {
   // ---- Measurement ----
   const samples = [];               // { t: simulated seconds, q: m^3/s }
   let simT = 0, smooth = 0, yMax = 2, peak = 0;
-  const discharge = () => {
-    const f = sim.qW[site] + sim.qE[site] + sim.qN[site] + sim.qS[site];   // m^2/s per unit width, leaving the cell
-    return f * sim.dx;                                                      // -> m^3/s
+  // Discharge leaving one cell (m^3/s). Flux is per unit width (m^2/s), so multiply by the cell width.
+  const cellOut = (k) => (sim.qW[k] + sim.qE[k] + sim.qN[k] + sim.qS[k]) * sim.dx;
+  // One cell flickers and depends on exactly how the flow splits between neighbours, so the gauge reads a
+  // weighted average over the river cells around the post (not hillslope cells, which carry sheet flow).
+  const kernel = [];
+  for (let dj = -REACH; dj <= REACH; dj++) for (let di = -REACH; di <= REACH; di++) {
+    const d2 = di * di + dj * dj;
+    if (d2 <= REACH * REACH) kernel.push({ di, dj, w: Math.exp(-d2 / (2 * REACH_SIGMA * REACH_SIGMA)) });
+  }
+  const discharge = (k = site) => {
+    const ci = k % gw, cj = (k / gw) | 0;
+    let sum = 0, wsum = 0;
+    for (const { di, dj, w } of kernel) {
+      const i = ci + di, j = cj + dj;
+      if (i < 0 || j < 0 || i >= gw || j >= gh) continue;
+      const kk = j * gw + i;
+      if (!sim.chan[kk] || !sim.inside[kk]) continue;
+      sum += w * cellOut(kk); wsum += w;
+    }
+    return wsum > 0 ? sum / wsum : cellOut(k);
   };
 
   function sample(simDt) {
@@ -186,5 +207,14 @@ export function createGauge({ terrain, pivot, camera, sim, grid, ui }) {
       return true;
     },
     reset() { samples.length = 0; peak = 0; smooth = 0; },
+    /** test helper: single-cell and averaged readings at a cell, and the site and its river neighbours */
+    _probe() {
+      const ci = site % gw, cj = (site / gw) | 0, out = [];
+      for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) {
+        const k = (cj + dj) * gw + ci + di;
+        if (sim.chan[k]) out.push({ single: cellOut(k), averaged: discharge(k) });
+      }
+      return out;
+    },
   };
 }

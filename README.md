@@ -23,7 +23,8 @@ about 3 m, and lakes 0.8-3.5 m by size, with shelving shores.
 A **virtual river gauge** sits on the stream that drains the largest area (found by flow accumulation over the
 terrain): a small post on the map, a dashed tag line to a chart in the corner, and a scrolling graph of
 discharge (m³/s) over the last five simulated hours (each real second is about 5 simulated minutes). The
-reading is the simulation's own flow out of the gauge's cell, so rain that reaches the stream shows up as a
+reading is the simulation's own flow, averaged (weighted towards the middle) over the river cells within about
+100 m of the post, shown as a ring on the map, so it doesn't depend on the exact cell it sits on. Rain that reaches the stream shows up as a
 rising limb, a peak and a slow recession. Click or tap another river or stream to move the gauge. Flows are
 for illustration (the sim is a time-lapse on a coarse grid with exaggerated rainfall), not calibrated to real gauges.
 

@@ -268,5 +268,6 @@ export function createRain({ terrain, pivot, camera, statsEl, gaugeUI }) {
     },
     setIntensity(v) { intensity = v; },
     sim,
+    gauge,
   };
 }
