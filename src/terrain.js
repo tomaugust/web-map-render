@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { lonToU, latToV, metresPerUnit, centroid } from './geo.js';
+import { waterDepthMap, poolMap } from './vectors.js';
 
 const TERRARIUM = (z, x, y) => `https://s3.amazonaws.com/elevation-tiles-prod/terrarium/${z}/${x}/${y}.png`;
 const IMAGERY = (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`;
@@ -95,7 +96,7 @@ function cropTo(m, u0, u1, v0, v1, w, h) {
  * Builds the parish terrain: a displaced, boundary-clipped top surface with
  * side walls and a base. Origin is the polygon centroid; units are km.
  */
-export async function buildTerrain(geojson, renderer) {
+export async function buildTerrain(geojson, renderer, vectors = null) {
   const ring = geojson.features[0].geometry.coordinates[0]; // [lon,lat]
   const uv = ring.map(([lon, lat]) => [lonToU(lon), latToV(lat)]);
   const us = uv.map((p) => p[0]), vs = uv.map((p) => p[1]);
@@ -118,8 +119,23 @@ export async function buildTerrain(geojson, renderer) {
   let hMin = Infinity;
   const GRIDH = [];
   const widthKm = (u1 - u0) * M, depthKm = (v1 - v0) * M;
+  // Rivers, ponds and lakes from the vector data lower the ground (generic depths, see vectors.js).
+  const aspect0 = depthKm / widthKm;
+  const tw0 = aspect0 <= 1 ? TEX : Math.round(TEX / aspect0), th0 = aspect0 <= 1 ? Math.round(TEX * aspect0) : TEX;
+  const bbox = { u0, u1, v0, v1 };
+  const carve = vectors ? waterDepthMap(vectors, bbox, tw0, th0, widthKm * 1000) : null;
+  const carveCells = carve ? poolMap(carve, tw0, th0, GRID, GRID).mean : null;
+  const carveAt = (i, j) => {                      // vertex value = mean of the (up to) four cells around it
+    let s = 0, n = 0;
+    for (let dj = -1; dj <= 0; dj++) for (let di = -1; di <= 0; di++) {
+      const ci = i + di, cj = j + dj;
+      if (ci < 0 || cj < 0 || ci >= GRID || cj >= GRID) continue;
+      s += carveCells[cj * GRID + ci]; n++;
+    }
+    return n ? s / n : 0;
+  };
   for (let j = 0; j <= GRID; j++) for (let i = 0; i <= GRID; i++) {
-    const h = sample(u0 + (u1 - u0) * i / GRID, v0 + (v1 - v0) * j / GRID);
+    const h = sample(u0 + (u1 - u0) * i / GRID, v0 + (v1 - v0) * j / GRID) - (carveCells ? carveAt(i, j) : 0);
     GRIDH.push(h);
   }
   for (const h of ringH) hMin = Math.min(hMin, h);
@@ -219,12 +235,16 @@ export async function buildTerrain(geojson, renderer) {
     const a = x.getImageData(0, 0, gw, gh).data;
     const inside = new Uint8Array(gw * gh);
     for (let i = 0; i < inside.length; i++) inside[i] = a[i * 4] > 127 ? 1 : 0;
-    return { gw, gh, heights, inside, cellM: (widthKm * UNIT) / gw };
+    // Water bodies pooled onto this grid: mean and deepest bed lowering (m) per cell.
+    const water = carve ? poolMap(carve, tw0, th0, gw, gh) : null;
+    return { gw, gh, heights, inside, cellM: (widthKm * UNIT) / gw, waterMean: water?.mean ?? null, waterMax: water?.max ?? null };
   }
 
   return {
     top,
     gridData,
+    bbox, widthM: widthKm * 1000, vectors,
+    carve: carve ? { map: carve, W: tw0, H: th0 } : null,
     imagery: imageryCanvas,     // the map picture draped on the terrain (colour = land use)
     // Scene-space terrain height at local (x,z) km, for ray picking and placing objects.
     surfaceY: (x, z) => yOf(sample(ou + x / M, ov + z / M)),

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { buildTerrain } from './terrain.js';
 import { createRain } from './rain.js';
+import { loadVectors } from './vectors.js';
 import { createSmoke } from './smoke.js';
 import { createWildfire } from './fire.js';
 
@@ -68,8 +69,8 @@ const windUI = { nowFrom: 225, setFrom: 225 };
 const pinTopWorld = new THREE.Vector3();
 
 async function init() {
-  const geo = await (await fetch('data/cholsey-parish.geojson')).json();
-  terrain = await buildTerrain(geo, renderer);
+  const [geo, vectors] = await Promise.all([fetch('data/cholsey-parish.geojson').then((r) => r.json()), loadVectors()]);
+  terrain = await buildTerrain(geo, renderer, vectors);
   console.log('tiles', terrain.tilesOk);
   pivot.add(terrain.group);
   pin = makePin();

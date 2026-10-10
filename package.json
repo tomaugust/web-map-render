@@ -1,0 +1,13 @@
+{
+  "name": "web-map-render",
+  "private": true,
+  "type": "module",
+  "description": "3D terrain map of Cholsey with river flow, pollution and wildfire simulations",
+  "scripts": {
+    "data:vectors": "node scripts/fetch-vectors.mjs"
+  },
+  "devDependencies": {
+    "@mapbox/vector-tile": "^3.0.0",
+    "pbf": "^5.1.2"
+  }
+}

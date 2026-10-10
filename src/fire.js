@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createPicker } from './pick.js';
 import { createGpuParticles } from './gpuParticles.js';
+import { classCoverages, vectorDraw, WATERWAY } from './vectors.js';
 
 // ---------------------------------------------------------------------------------------------
 // Wildfire: a stochastic cellular automaton over a fuel map read from the map picture itself.
@@ -49,12 +50,49 @@ export function createWildfire({ terrain, pivot, camera, renderer, lightDir, ui 
   let acc = 0, emitClock = 0, statClock = 0;
   const emitSmoke = new Float32Array(4096 * 4), emitFlame = new Float32Array(4096 * 4);
 
-  // ---- Fuel map from the map picture ----
-  function buildFuel() {
-    const grid = terrain.gridData(FW);
-    FH = grid.gh; cellM = grid.cellM; height = grid.heights; inside = grid.inside;
-    const n = FW * FH;
-    fuelKind = new Uint8Array(n); fuel = new Float32Array(n);
+  // ---- Fuel from the vector data: exact roads, rail, water and land cover (preferred) ----
+  const ROAD_WIDTH = { motorway: 22, trunk: 18, primary: 14, secondary: 12, tertiary: 9, minor: 6, residential: 6, service: 4.5, track: 3.5, rail: 5, transit: 5 };
+  const URBAN_LAND = ['residential', 'industrial', 'commercial', 'retail', 'garages', 'school', 'hospital', 'library', 'kindergarten', 'stadium', 'religious', 'university', 'college', 'railway'];
+  const VEG_FUEL = { wood: 1.0, grass: 0.95, farmland: 0.8, wetland: 0.4, pitch: 0.6, cemetery: 0.5, quarry: 0.02 };
+  function fillFromVectors(grid) {
+    const vec = terrain.vectors, { gw, gh } = grid, n = gw * gh;
+    const feats = vec.features;
+    const polys = (pred) => (ctx, proj) => { for (const f of feats) if (pred(f.properties)) vectorDraw.fillPolys(ctx, f.geometry, proj); };
+    const stroke = (pred, widthOf) => (ctx, proj, mpp) => {
+      for (const f of feats) {
+        const p = f.properties;
+        if (!pred(p) || p.brunnel === 'tunnel') continue;
+        const w = widthOf(p); if (!w) continue;
+        ctx.lineWidth = w / mpp; vectorDraw.strokeLines(ctx, f.geometry, proj);
+      }
+    };
+    const specs = [
+      { id: 'water', draw: (ctx, proj, mpp) => { polys((p) => p.layer === 'water')(ctx, proj); stroke((p) => p.layer === 'waterway' && (p.class === 'river' || p.class === 'canal'), (p) => WATERWAY[p.class].w)(ctx, proj, mpp); } },
+      { id: 'stream', draw: stroke((p) => p.layer === 'waterway' && p.class !== 'river' && p.class !== 'canal', (p) => (WATERWAY[p.class] || { w: 1.5 }).w) },
+      { id: 'road', draw: stroke((p) => p.layer === 'transportation', (p) => ROAD_WIDTH[p.class] || 0) },
+      { id: 'build', draw: polys((p) => p.layer === 'building') },
+      { id: 'urban', draw: polys((p) => p.layer === 'landuse' && URBAN_LAND.includes(p.class)) },
+      ...Object.keys(VEG_FUEL).map((id) => ({ id, draw: polys((p) => (p.layer === 'landcover' || p.layer === 'landuse') && p.class === id) })),
+    ];
+    const cov = classCoverages(vec, terrain.bbox, terrain.widthM, gw, gh, specs);
+    const vegIds = Object.keys(VEG_FUEL);
+    for (let k = 0; k < n; k++) {
+      if (!inside[k]) continue;
+      if (cov.water[k] >= 0.3) { fuelKind[k] = 3; fuel[k] = 0; continue; }
+      if (cov.road[k] >= 0.2) { fuelKind[k] = 4; fuel[k] = 0.05; continue; }
+      if (cov.build[k] >= 0.3 || cov.urban[k] >= 0.5) { fuelKind[k] = 2; fuel[k] = 0.06; continue; }
+      let best = 0, bf = 0.35;                                          // unmapped ground (gardens, verges): weak fuel
+      for (const id of vegIds) if (cov[id][k] > best && cov[id][k] >= 0.25) { best = cov[id][k]; bf = VEG_FUEL[id]; }
+      let f = bf;
+      if (cov.road[k] >= 0.1) f *= 0.5;                                 // a lane or track: slows the fire
+      if (cov.stream[k] >= 0.08) f *= 0.25;                             // a stream or ditch: a firebreak that leaks
+      fuelKind[k] = 1; fuel[k] = f;
+    }
+  }
+
+  // ---- Fallback: guess from the colours of the map picture ----
+  function fillFromRaster(grid) {
+    const { gw: FW_, gh: FH_ } = grid;
     const src = terrain.imagery, tw = src.width, th = src.height;
     const px = src.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, tw, th).data;
     const cache = new Int8Array(64 * 64 * 64).fill(-2);          // quantised colour -> palette index (-1 = none)
@@ -88,6 +126,15 @@ export function createWildfire({ terrain, pivot, camera, renderer, lightDir, ui 
       else if (cntU >= 0.45 * tot) { fuelKind[k] = 2; fuel[k] = 0.06; }
       else { fuelKind[k] = 1; fuel[k] = cntV > 0 ? sumV / cntV : 0.3; }
     }
+  }
+
+  // ---- Fuel map ----
+  function buildFuel() {
+    const grid = terrain.gridData(FW);
+    FH = grid.gh; cellM = grid.cellM; height = grid.heights; inside = grid.inside;
+    const n = FW * FH;
+    fuelKind = new Uint8Array(n); fuel = new Float32Array(n);
+    if (terrain.vectors) fillFromVectors(grid); else fillFromRaster(grid);
     burnT = new Float32Array(n);
     for (let k = 0; k < n; k++) burnT[k] = 25 + 60 * fuel[k];
     state = new Uint8Array(n); timer = new Float32Array(n);

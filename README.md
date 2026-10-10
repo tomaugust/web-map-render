@@ -13,7 +13,12 @@ Switch to **River flow** (or open `#rain`) for a water-flow simulation on the sa
 steer a rain cloud; drops fall and run downhill (shallow-water "virtual pipes" model on a 220-cell grid
 built from the elevation data), pooling in hollows and draining off the parish edge. Drag to turn,
 use the slider to change rainfall, and **Clear water** to reset. It runs as a time-lapse and is a
-demo, not a hydrological model (coarse ~19 m elevation, no soil or drainage data).
+demo, not a hydrological model (coarse ~19 m elevation, no soil or drainage data). Rivers, streams, ditches,
+ponds and lakes come from vector map data and are cut into the ground (so water runs into them, not over
+them) and drawn as water; the Thames shows along the eastern edge. **Depths are generic assumptions**:
+OpenStreetMap has no widths or depths, and no open dataset covers river or small-lake depth here (the UKCEH
+UK Lakes Portal has outlines only, with depth recorded for almost none). Streams are 0.4-0.5 m deep, the river
+about 3 m, and lakes 0.8-3.5 m by size, with shelving shores.
 
 ## Pollution tab
 
@@ -31,7 +36,8 @@ illustrative, not a dispersion model.
 ## Wildfire tab
 
 Switch to **Wildfire** (or open `#fire`) and tap the map to start a fire. It spreads through the green
-spaces and struggles across everything else. The fuel map is read straight from the map picture:
+spaces and struggles across everything else. The fuel map is built from vector map data (exact roads,
+railway, water, buildings and land cover):
 forest, grass, meadow and farmland burn well; gardens and bare land less; roads, railways, built-up
 areas and water barely at all (fire only gets across by creeping through a thin line or by embers
 thrown downwind, so it sometimes jumps a road and rarely a river). Spread is faster downwind and uphill,
@@ -56,7 +62,8 @@ three.js is loaded from jsDelivr, so an internet connection is needed (map tiles
 | --- | --- |
 | Parish boundary | OpenStreetMap relation 77791, saved as `data/cholsey-parish.geojson` (fetched via Nominatim) |
 | Elevation | Mapzen/AWS Terrain Tiles (terrarium, z13), exaggerated 4x vertically |
-| Imagery | OpenStreetMap raster tiles (z14), draped over the terrain |
+| Imagery | OpenStreetMap raster tiles (z14), draped over the terrain (picture only) |
+| Water, roads, rail, buildings, land cover | OpenStreetMap vector tiles via OpenFreeMap, saved as `data/vectors.geojson` (`npm install && npm run data:vectors` to refresh) |
 
 Map data © OpenStreetMap contributors (ODbL). OSM's tile servers are for light use only; swap in
 your own tile source before using this for anything real.
@@ -67,7 +74,9 @@ your own tile source before using this for anything real.
 - `src/rain.js` – water simulation, cloud, raindrops and water overlay.
 - `src/smoke.js` – factory model, wind model and smoke particles (Pollution tab).
 - `src/gpuParticles.js` – reusable GPU particle system (emitters, buoyancy, curl-noise eddies, sprites) used by the Wildfire tab.
-- `src/fire.js` – fuel map from the map picture, fire-spread model, overlays, flames and smoke.
+- `src/vectors.js` – loads the vector data and rasterises it (water depth map, water layer, per-class coverage).
+- `scripts/fetch-vectors.mjs` – downloads the vector tiles for the parish into `data/vectors.geojson`.
+- `src/fire.js` – fuel map from the vector data (colour-guessing fallback), fire-spread model, overlays, flames and smoke.
 - `src/pick.js` – pointer-to-terrain picking shared by the Rain and Smoke tabs.
 - `src/main.js` – scene, tabs, lighting, pin, drag/zoom controls, popout.
 - `src/geo.js` – Web Mercator helpers.
