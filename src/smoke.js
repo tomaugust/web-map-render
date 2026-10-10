@@ -3,7 +3,8 @@ import { GPUComputationRenderer } from 'three/addons/misc/GPUComputationRenderer
 import { createPicker } from './pick.js';
 
 const TIME_LAPSE = 30;       // simulated seconds per real second
-const SIDE = Math.min(768, Math.max(64, +new URLSearchParams(location.search).get('n') || 384)); // particles = SIDE^2
+const COARSE = matchMedia('(pointer: coarse)').matches;   // phones/tablets: lighter default
+const SIDE = Math.min(768, Math.max(64, +new URLSearchParams(location.search).get('n') || (COARSE ? 256 : 384))); // particles = SIDE^2
 const LIFE = 720;            // simulated seconds a puff lives
 const EXAG = 4;              // matches the terrain's vertical exaggeration
 const DIR_TAU = 150;         // s: how quickly wind direction wanders
@@ -101,7 +102,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
     dpr: renderer.getPixelRatio(),
     gpu: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : 'unknown GPU',
   };
-  let fps = 60;
+  let fps = 60, keep = 1, keepClock = 0;
   const gpu = new GPUComputationRenderer(SIDE, SIDE, renderer);
   const emitPos = new THREE.Vector3();
   const sharedUniforms = {
@@ -152,7 +153,8 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
       vec3 wind = vec3(uWindDir.x, 0.0, uWindDir.y) * uWindSpeed;
       if (spawning(P, uv)) {                                                     // released from the stack
         float j = hash2(uv * 13.3 + uTime);
-        gl_FragColor = vec4(wind.x * 0.25, 4.0 + 3.0 * j, wind.z * 0.25, 1.0);
+        vec3 rj = vec3(hash2(uv * 5.1 + uTime), hash2(uv * 8.7 - uTime), hash2(uv * 3.3 + uTime * 1.7)) - 0.5;
+        gl_FragColor = vec4(wind.x * 0.25 + rj.x * 1.2, 4.0 + 3.0 * j + rj.y * 1.2, wind.z * 0.25 + rj.z * 1.2, 1.0);   // ragged exit, not a laser line
         return;
       }
       float aglM = max(0.0, (P.y - uEmit.y) / (uExag * 0.001));
@@ -169,11 +171,11 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
     // Divergence-free turbulence (m/s) from the curl of three noise fields, four eddy sizes.
     vec3 turbulence(vec3 p, float age) {
       vec3 sum = vec3(0.0);
-      for (int j = 0; j < 4; j++) {
+      for (int j = 0; j < 5; j++) {
         float L = 0.9 * pow(0.46, float(j));                    // eddy size, km
         float A = uSigma * pow(L / 0.9, 0.33) * 1.6;            // Kolmogorov-ish: bigger eddies are faster
         float tau = L * 1000.0 / A;                             // turnover time, s
-        float wgt = smoothstep(0.0, 1.0, age / (0.5 * tau));     // eddy only acts once the puff is big enough
+        float wgt = smoothstep(0.0, 1.0, age / (0.3 * tau + 4.0));    // small eddies bite early, big ones as the puff grows
         if (wgt <= 0.0) continue;
         vec3 q = (p - uDrift) / L + vec3(float(j) * 13.1, float(j) * 7.7, float(j) * 3.3) + vec3(0.3, 0.5, 0.2) * uTime / tau;
         vec4 n0 = noised(q), n1 = noised(q + vec3(31.4, 17.2, 5.9)), n2 = noised(q + vec3(11.7, 43.1, 23.5));
@@ -188,13 +190,23 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
       vec4 V = texture2D(textureVelocity, uv);
       if (P.w < 0.0 && P.w + uDt < 0.0) { gl_FragColor = vec4(uEmit, P.w + uDt); return; }
       if (spawning(P, uv)) {
+        // Released part-way through this step: start already 'over' seconds old and that far along,
+        // so a slow frame rate doesn't dump a clump of puffs at one spot.
+        float over = P.w < 0.0 ? P.w + uDt : 0.0;
         float a = hash2(uv * 7.1 + uTime) * 6.2831853;
-        gl_FragColor = vec4(uEmit + vec3(cos(a), 0.0, sin(a)) * 0.006 * hash2(uv + 3.0), 0.0);
+        vec3 p0 = uEmit + vec3(cos(a), 0.0, sin(a)) * 0.012 * hash2(uv + 3.0) + vec3(V.x, V.y * uExag, V.z) * (over * 0.001);
+        gl_FragColor = vec4(p0, over);
         return;
       }
       vec3 t = turbulence(P.xyz, P.w);
       vec3 vel = V.xyz + t * vec3(1.0, 0.6, 1.0);
-      vec3 p = P.xyz + vec3(vel.x, vel.y * uExag, vel.z) * (uDt * 0.001);
+      // Random walk on top of the eddies: the plume widens from the start.
+      vec3 g = vec3(hash2(uv * 4.3 + uTime) + hash2(uv * 9.1 - uTime) + hash2(uv * 2.7 + uTime * 1.3),
+                    hash2(uv * 6.7 + uTime * 0.7) + hash2(uv * 1.9 - uTime) + hash2(uv * 8.3 + uTime * 2.1),
+                    hash2(uv * 3.1 - uTime * 0.9) + hash2(uv * 7.7 + uTime) + hash2(uv * 5.9 - uTime * 1.6)) * 2.0 - 3.0;
+      float K = (3.0 + 0.5 * uWindSpeed) * smoothstep(0.0, 60.0, P.w);
+      vec3 jump = g * sqrt(2.0 * K * uDt) * 0.001 * vec3(1.0, 0.5 * uExag, 1.0);
+      vec3 p = P.xyz + vec3(vel.x, vel.y * uExag, vel.z) * (uDt * 0.001) + jump;
       p.y = max(p.y, ground(p.xz));
       gl_FragColor = vec4(p, P.w + uDt);
     }`;
@@ -238,23 +250,23 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
   const density = 0.15 * Math.pow(384 / SIDE, 2);   // keep overall opacity similar at other particle counts
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
-    uniforms: { tPos: { value: null }, tVel: { value: null }, uScale: { value: 1 }, uLife: { value: LIFE }, uMaxPt: { value: Math.min(60, diag.maxPoint) },
+    uniforms: { tPos: { value: null }, tVel: { value: null }, uScale: { value: 1 }, uLife: { value: LIFE }, uMaxPt: { value: Math.min(60, diag.maxPoint) }, uKeep: { value: 1 },
       uDensity: { value: density }, uEmitY: { value: 0 }, uExag: { value: EXAG }, uLight: { value: new THREE.Vector3(0, 1, 0) } },
     vertexShader: `
-      attribute vec2 aRef; uniform sampler2D tPos, tVel; uniform float uScale, uLife, uDensity, uEmitY, uMaxPt;
+      attribute vec2 aRef; uniform sampler2D tPos, tVel; uniform float uScale, uLife, uDensity, uEmitY, uMaxPt, uKeep;
       varying float vA; varying float vAge; varying float vH; varying float vSeed;
       float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       void main() {
         vec4 P = texture2D(tPos, aRef);
         vSeed = h21(aRef * 97.3);
         float f = P.w / uLife;
-        if (P.w < 0.0 || f >= 1.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
+        if (P.w < 0.0 || f >= 1.0 || h21(aRef * 57.1) > uKeep) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
         vec4 mv = modelViewMatrix * vec4(P.xyz, 1.0);
         gl_Position = projectionMatrix * mv;
-        float r = (0.014 + 0.07 * pow(f, 0.6)) * (0.65 + 0.7 * vSeed);   // every puff a different size; they stay small so the plume reads as one volume
+        float r = (0.014 + 0.095 * pow(f, 0.6)) * (0.65 + 0.7 * vSeed);   // every puff a different size; they stay small so the plume reads as one volume
         gl_PointSize = clamp(r * uScale / -mv.z, 1.5, uMaxPt);
         float fadeIn = smoothstep(0.0, 8.0, P.w);
-        vA = uDensity * fadeIn * pow(1.0 - f, 1.6) * (0.4 + 0.6 * (1.0 - pow(f, 0.5))) * (0.6 + 0.8 * h21(aRef * 41.7));
+        vA = uDensity * fadeIn * pow(1.0 - f, 1.6) * (0.4 + 0.6 * (1.0 - pow(f, 0.5))) * (0.6 + 0.8 * h21(aRef * 41.7)) * pow(1.0 / uKeep, 0.85);   // fewer puffs drawn -> each a bit stronger
         vAge = f;
         vH = clamp((P.y - uEmitY) * 2.0, 0.0, 1.0);
       }`,
@@ -304,7 +316,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
     U.uWindSpeed.value = cur.speed; U.uWindDir.value.set(cur.x, cur.z); U.uDrift.value.copy(drift);
     // Stronger wind mixes the plume faster: it bends over, cools sooner and rises less.
     velVar.material.uniforms.uTauT.value = 70 / (1 + cur.speed / 5);
-    posVar.material.uniforms.uSigma.value = 0.9 + 0.2 * cur.speed;
+    posVar.material.uniforms.uSigma.value = 1.0 + 0.14 * cur.speed;
     gpu.compute();
     mat.uniforms.tPos.value = gpu.getCurrentRenderTarget(posVar).texture;
     mat.uniforms.tVel.value = gpu.getCurrentRenderTarget(velVar).texture;
@@ -314,10 +326,18 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
     renderer.getDrawingBufferSize(sz);
     mat.uniforms.uScale.value = sz.y / (2 * Math.tan((camera.fov * Math.PI) / 360));
     fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
+    // Keep the frame rate up on slower GPUs: draw a smaller share of the particles when it drops.
+    keepClock += dt;
+    if (keepClock > 1) {
+      keepClock = 0;
+      if (fps < 28) keep = Math.max(0.2, keep * 0.8);
+      else if (fps > 52 && keep < 1) keep = Math.min(1, keep * 1.1);
+      mat.uniforms.uKeep.value = keep;
+    }
     statClock += dt;
     if (statClock > 0.15) {
       statClock = 0;
-      ui.onInfo?.(`GPU particle simulation · ${Math.round(N / 1000)}k particles · float32 targets ${diag.floatRT ? 'yes' : 'NO'} · ${Math.round(fps)} fps · pixel ratio ${diag.dpr} · max sprite ${diag.maxPoint}px · ${diag.gpu}`);
+      ui.onInfo?.(`GPU particle simulation · ${Math.round(N / 1000)}k particles · float32 targets ${diag.floatRT ? 'yes' : 'NO'} · ${Math.round(fps)} fps · drawing ${Math.round(keep * 100)}% · pixel ratio ${diag.dpr} · max sprite ${diag.maxPoint}px · ${diag.gpu}`);
       ui.onWind?.({ speed: cur.speed, fromDeg: cur.fromDeg, nominalFrom: wind.from, text:
         `Wind now ${cur.speed.toFixed(1)} m/s from ${cardinal(cur.fromDeg)} (${Math.round(((cur.fromDeg % 360) + 360) % 360)}°)` });
     }
