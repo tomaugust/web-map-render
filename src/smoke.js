@@ -42,8 +42,8 @@ function makeFactory() {
 }
 
 const NOISE = `
-  float hash3(vec3 p) { p = mod(p, 61.0); return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
-  float hash2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+  float hash3(vec3 p) { p = fract(mod(p, 61.0) * 0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y) * p.z); }
+  float hash2(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
   // Value noise with analytic derivatives (Inigo Quilez): returns (value, d/dx, d/dy, d/dz).
   vec4 noised(vec3 x) {
     vec3 p = floor(x), w = fract(x);
@@ -106,7 +106,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
   const gpu = new GPUComputationRenderer(SIDE, SIDE, renderer);
   const emitPos = new THREE.Vector3();
   const sharedUniforms = {
-    uDt: { value: 0 }, uTime: { value: 0 }, uLife: { value: LIFE }, uEmit: { value: emitPos },
+    uDt: { value: 0 }, uTime: { value: 0 }, uSeed: { value: 0 }, uLife: { value: LIFE }, uEmit: { value: emitPos },
     uWindSpeed: { value: 5 }, uWindDir: { value: new THREE.Vector2(1, 0) }, uDrift: { value: new THREE.Vector3() },
     uExag: { value: EXAG }, uHalfW: { value: terrain.widthKm / 2 + 1.2 }, uHalfD: { value: terrain.depthKm / 2 + 1.2 },
     tHeight: { value: null }, uMapA: { value: new THREE.Vector4() },
@@ -129,7 +129,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
   }
 
   const COMMON = `
-    uniform float uDt, uTime, uLife, uExag, uHalfW, uHalfD; uniform vec3 uEmit, uDrift; uniform vec2 uWindDir; uniform float uWindSpeed;
+    uniform float uDt, uTime, uSeed, uLife, uExag, uHalfW, uHalfD; uniform vec3 uEmit, uDrift; uniform vec2 uWindDir; uniform float uWindSpeed;
     uniform sampler2D tHeight; uniform vec4 uMapA;
     float ground(vec2 xz) {
       vec2 t = vec2(uMapA.x + xz.x * uMapA.z, uMapA.y + xz.y * uMapA.w);
@@ -152,8 +152,8 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
       if (P.w < 0.0 && P.w + uDt < 0.0) { gl_FragColor = vec4(0.0); return; }   // still waiting
       vec3 wind = vec3(uWindDir.x, 0.0, uWindDir.y) * uWindSpeed;
       if (spawning(P, uv)) {                                                     // released from the stack
-        float j = hash2(uv * 13.3 + uTime);
-        vec3 rj = vec3(hash2(uv * 5.1 + uTime), hash2(uv * 8.7 - uTime), hash2(uv * 3.3 + uTime * 1.7)) - 0.5;
+        float j = hash2(uv * 13.3 + uSeed);
+        vec3 rj = vec3(hash2(uv * 5.1 + uSeed), hash2(uv * 8.7 - uSeed), hash2(uv * 3.3 + uSeed * 1.7)) - 0.5;
         gl_FragColor = vec4(wind.x * 0.25 + rj.x * 1.2, 4.0 + 3.0 * j + rj.y * 1.2, wind.z * 0.25 + rj.z * 1.2, 1.0);   // ragged exit, not a laser line
         return;
       }
@@ -178,6 +178,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
         float wgt = smoothstep(0.0, 1.0, age / (0.3 * tau + 4.0));    // small eddies bite early, big ones as the puff grows
         if (wgt <= 0.0) continue;
         vec3 q = (p - uDrift) / L + vec3(float(j) * 13.1, float(j) * 7.7, float(j) * 3.3) + vec3(0.3, 0.5, 0.2) * uTime / tau;
+        q = mod(q, 61.0);                                          // the noise repeats every 61 cells; keeps coordinates small on long runs
         vec4 n0 = noised(q), n1 = noised(q + vec3(31.4, 17.2, 5.9)), n2 = noised(q + vec3(11.7, 43.1, 23.5));
         vec3 curl = vec3(n2.z - n1.w, n0.w - n2.y, n1.y - n0.z);
         sum += A * wgt * curl * 0.35;
@@ -193,7 +194,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
         // Released part-way through this step: start already 'over' seconds old and that far along,
         // so a slow frame rate doesn't dump a clump of puffs at one spot.
         float over = P.w < 0.0 ? P.w + uDt : 0.0;
-        float a = hash2(uv * 7.1 + uTime) * 6.2831853;
+        float a = hash2(uv * 7.1 + uSeed) * 6.2831853;
         vec3 p0 = uEmit + vec3(cos(a), 0.0, sin(a)) * 0.012 * hash2(uv + 3.0) + vec3(V.x, V.y * uExag, V.z) * (over * 0.001);
         gl_FragColor = vec4(p0, over);
         return;
@@ -201,9 +202,9 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
       vec3 t = turbulence(P.xyz, P.w);
       vec3 vel = V.xyz + t * vec3(1.0, 0.6, 1.0);
       // Random walk on top of the eddies: the plume widens from the start.
-      vec3 g = vec3(hash2(uv * 4.3 + uTime) + hash2(uv * 9.1 - uTime) + hash2(uv * 2.7 + uTime * 1.3),
-                    hash2(uv * 6.7 + uTime * 0.7) + hash2(uv * 1.9 - uTime) + hash2(uv * 8.3 + uTime * 2.1),
-                    hash2(uv * 3.1 - uTime * 0.9) + hash2(uv * 7.7 + uTime) + hash2(uv * 5.9 - uTime * 1.6)) * 2.0 - 3.0;
+      vec3 g = vec3(hash2(uv * 4.3 + uSeed) + hash2(uv * 9.1 - uSeed) + hash2(uv * 2.7 + uSeed * 1.3),
+                    hash2(uv * 6.7 + uSeed * 0.7) + hash2(uv * 1.9 - uSeed) + hash2(uv * 8.3 + uSeed * 2.1),
+                    hash2(uv * 3.1 - uSeed * 0.9) + hash2(uv * 7.7 + uSeed) + hash2(uv * 5.9 - uSeed * 1.6)) * 2.0 - 3.0;
       float K = (3.0 + 0.5 * uWindSpeed) * smoothstep(0.0, 60.0, P.w);
       vec3 jump = g * sqrt(2.0 * K * uDt) * 0.001 * vec3(1.0, 0.5 * uExag, 1.0);
       vec3 p = P.xyz + vec3(vel.x, vel.y * uExag, vel.z) * (uDt * 0.001) + jump;
@@ -255,7 +256,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
     vertexShader: `
       attribute vec2 aRef; uniform sampler2D tPos, tVel; uniform float uScale, uLife, uDensity, uEmitY, uMaxPt, uKeep;
       varying float vA; varying float vAge; varying float vH; varying float vSeed;
-      float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float h21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
       void main() {
         vec4 P = texture2D(tPos, aRef);
         vSeed = h21(aRef * 97.3);
@@ -272,7 +273,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
       }`,
     fragmentShader: `
       uniform vec3 uLight; varying float vA; varying float vAge; varying float vH; varying float vSeed;
-      float hh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float hh(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
       float vn(vec2 p) {
         vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
         return mix(mix(hh(i), hh(i + vec2(1.0, 0.0)), f.x), mix(hh(i + vec2(0.0, 1.0)), hh(i + vec2(1.0, 1.0)), f.x), f.y);
@@ -312,7 +313,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
     drift.x += (cur.x * cur.speed * dtS) / 1000; drift.z += (cur.z * cur.speed * dtS) / 1000;
     topWorld();
     const U = sharedUniforms;
-    U.uDt.value = dtS; U.uTime.value = simT;
+    U.uDt.value = dtS; U.uTime.value = simT; U.uSeed.value = Math.random() * 50;
     U.uWindSpeed.value = cur.speed; U.uWindDir.value.set(cur.x, cur.z); U.uDrift.value.copy(drift);
     // Stronger wind mixes the plume faster: it bends over, cools sooner and rises less.
     velVar.material.uniforms.uTauT.value = 70 / (1 + cur.speed / 5);
