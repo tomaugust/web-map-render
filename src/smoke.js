@@ -92,6 +92,16 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
   // and a curl-noise field (divergence-free, so it swirls) shreds the plume, with larger eddies
   // switching on as a puff ages so the plume billows more the further downwind it goes.
   const N = SIDE * SIDE;
+  const gl = renderer.getContext();
+  const pointRange = gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE);
+  const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+  const diag = {
+    floatRT: renderer.extensions.has('EXT_color_buffer_float'),
+    maxPoint: Math.floor(pointRange[1]),
+    dpr: renderer.getPixelRatio(),
+    gpu: dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : 'unknown GPU',
+  };
+  let fps = 60;
   const gpu = new GPUComputationRenderer(SIDE, SIDE, renderer);
   const emitPos = new THREE.Vector3();
   const sharedUniforms = {
@@ -225,34 +235,45 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
   geo.setAttribute('aRef', new THREE.BufferAttribute(ref, 2));
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
-  const density = 0.085 * Math.pow(384 / SIDE, 2);   // keep overall opacity similar at other particle counts
+  const density = 0.15 * Math.pow(384 / SIDE, 2);   // keep overall opacity similar at other particle counts
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
-    uniforms: { tPos: { value: null }, tVel: { value: null }, uScale: { value: 1 }, uLife: { value: LIFE },
+    uniforms: { tPos: { value: null }, tVel: { value: null }, uScale: { value: 1 }, uLife: { value: LIFE }, uMaxPt: { value: Math.min(60, diag.maxPoint) },
       uDensity: { value: density }, uEmitY: { value: 0 }, uExag: { value: EXAG }, uLight: { value: new THREE.Vector3(0, 1, 0) } },
     vertexShader: `
-      attribute vec2 aRef; uniform sampler2D tPos, tVel; uniform float uScale, uLife, uDensity, uEmitY;
-      varying float vA; varying float vAge; varying float vH;
+      attribute vec2 aRef; uniform sampler2D tPos, tVel; uniform float uScale, uLife, uDensity, uEmitY, uMaxPt;
+      varying float vA; varying float vAge; varying float vH; varying float vSeed;
+      float h21(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
       void main() {
         vec4 P = texture2D(tPos, aRef);
+        vSeed = h21(aRef * 97.3);
         float f = P.w / uLife;
         if (P.w < 0.0 || f >= 1.0) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
         vec4 mv = modelViewMatrix * vec4(P.xyz, 1.0);
         gl_Position = projectionMatrix * mv;
-        float r = 0.016 + 0.12 * pow(f, 0.6);                    // puffs thin out as they spread
-        gl_PointSize = clamp(r * uScale / -mv.z, 1.5, 60.0);
+        float r = (0.014 + 0.07 * pow(f, 0.6)) * (0.65 + 0.7 * vSeed);   // every puff a different size; they stay small so the plume reads as one volume
+        gl_PointSize = clamp(r * uScale / -mv.z, 1.5, uMaxPt);
         float fadeIn = smoothstep(0.0, 8.0, P.w);
-        vA = uDensity * fadeIn * pow(1.0 - f, 1.6) * (0.4 + 0.6 * (1.0 - pow(f, 0.5)));
+        vA = uDensity * fadeIn * pow(1.0 - f, 1.6) * (0.4 + 0.6 * (1.0 - pow(f, 0.5))) * (0.6 + 0.8 * h21(aRef * 41.7));
         vAge = f;
         vH = clamp((P.y - uEmitY) * 2.0, 0.0, 1.0);
       }`,
     fragmentShader: `
-      uniform vec3 uLight; varying float vA; varying float vAge; varying float vH;
+      uniform vec3 uLight; varying float vA; varying float vAge; varying float vH; varying float vSeed;
+      float hh(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float vn(vec2 p) {
+        vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(hh(i), hh(i + vec2(1.0, 0.0)), f.x), mix(hh(i + vec2(0.0, 1.0)), hh(i + vec2(1.0, 1.0)), f.x), f.y);
+      }
       void main() {
         vec2 q = (gl_PointCoord - 0.5) * 2.0;
-        float d2 = dot(q, q);
+        float ang = vSeed * 6.2831853, cs = cos(ang), sn = sin(ang);
+        vec2 r = vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);
+        // Wobble the radius with noise so no puff is a clean circle, and break up its density.
+        float n1 = vn(r * 2.4 + vSeed * 31.0), n2 = vn(r * 5.1 + vSeed * 17.0 + 7.3);
+        float d2 = dot(q, q) * (0.65 + 0.9 * n1);
         if (d2 > 1.0) discard;
-        float a = exp(-d2 * 3.2) * vA;
+        float a = exp(-d2 * 3.4) * vA * (0.45 + 0.9 * n2);
         // Young smoke is dense and dark; it lightens as it dilutes, and the upper, sunnier side of the plume is brighter.
         vec3 col = mix(vec3(0.16, 0.16, 0.17), vec3(0.70, 0.72, 0.76), smoothstep(0.0, 0.8, vAge));
         col *= 0.8 + 0.35 * vH;
@@ -292,9 +313,11 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
     mat.uniforms.uLight.value.copy(sunView);
     renderer.getDrawingBufferSize(sz);
     mat.uniforms.uScale.value = sz.y / (2 * Math.tan((camera.fov * Math.PI) / 360));
+    fps += (1 / Math.max(dt, 1e-3) - fps) * 0.05;
     statClock += dt;
     if (statClock > 0.15) {
       statClock = 0;
+      ui.onInfo?.(`GPU particle simulation · ${Math.round(N / 1000)}k particles · float32 targets ${diag.floatRT ? 'yes' : 'NO'} · ${Math.round(fps)} fps · pixel ratio ${diag.dpr} · max sprite ${diag.maxPoint}px · ${diag.gpu}`);
       ui.onWind?.({ speed: cur.speed, fromDeg: cur.fromDeg, nominalFrom: wind.from, text:
         `Wind now ${cur.speed.toFixed(1)} m/s from ${cardinal(cur.fromDeg)} (${Math.round(((cur.fromDeg % 360) + 360) % 360)}°)` });
     }

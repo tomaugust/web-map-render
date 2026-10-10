@@ -79,6 +79,7 @@ async function init() {
   document.getElementById('po-elev').textContent = `${Math.round(terrain.pinHeightM)} m above sea level`;
   rain = createRain({ terrain, pivot, camera, statsEl: document.getElementById('rain-stats') });
   smoke = createSmoke({ terrain, pivot, camera, renderer, lightDir: sun.position, ui: {
+    onInfo: (t) => { document.getElementById('smoke-info').textContent = t; },
     onWind: (w) => { windUI.nowFrom = w.fromDeg; document.getElementById('wind-now').textContent = w.text; },
   } });
   loading.classList.add('done');
@@ -279,3 +280,4 @@ window.__pinScreen = () => {
 };
 window.__setMode = setMode;
 window.__rain = () => rain;
+window.__smoke = () => smoke;

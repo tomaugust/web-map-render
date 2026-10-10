@@ -53,3 +53,4 @@ html, body { margin: 0; height: 100%; background: #fff; color: #1f2933;
 #compass-dial g[id^="arrow"] { transform-origin: 0 0; }
 #wind-now, #smoke-controls .note { margin: 0; color: #556; font-size: 12px; }
 #scene.placing { cursor: crosshair; }
+#smoke-info { word-break: break-word; font-size: 11px !important; color: #889 !important; }
