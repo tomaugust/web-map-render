@@ -65,3 +65,16 @@ html, body { margin: 0; height: 100%; background: #fff; color: #1f2933;
 #fire-controls button { font: inherit; padding: 5px 10px; border: 1px solid #ccd; border-radius: 6px; background: #f8f9fa; cursor: pointer; }
 #fire-controls .note { margin: 0; color: #556; font-size: 12px; }
 #fire-controls .note[hidden] { display: none; }
+
+#gauge-link { position: fixed; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
+#gauge-link line { stroke: #00897b; stroke-width: 1.5; stroke-dasharray: 5 3; }
+#gauge-link circle { fill: #00897b; stroke: #fff; stroke-width: 1.5; }
+#gauge-card { position: fixed; top: 84px; right: 12px; width: min(340px, calc(100vw - 24px)); z-index: 5; padding: 8px 10px 6px;
+  background: #fff; border-radius: 10px; box-shadow: 0 2px 14px rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.06); }
+#gauge-card[hidden] { display: none; }
+.gauge-head { display: flex; align-items: baseline; gap: 10px; font-size: 13px; }
+.gauge-title { font-weight: 600; color: #00695c; }
+#gauge-now { font-variant-numeric: tabular-nums; font-weight: 600; color: #2d73d7; }
+#gauge-peak { margin-left: auto; font-size: 11px; color: #7a8493; font-variant-numeric: tabular-nums; }
+#gauge-chart { display: block; width: 100%; height: 130px; }
+.gauge-note { margin: 2px 0 0; font-size: 10.5px; color: #8a93a0; }

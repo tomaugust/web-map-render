@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createPicker } from './pick.js';
 import { waterLayerCanvas } from './vectors.js';
+import { createGauge } from './gauge.js';
 
 // Shallow-water ("virtual pipes") simulation over the parish heights.
 const G = 9.8;
@@ -110,16 +111,23 @@ class WaterSim {
     return v * this.dx * this.dx;
   }
 
+  /** Let the rivers and lakes find their resting state before anything is measured. */
+  settle(steps) { for (let i = 0; i < steps; i++) this.step(SIM_DT); this.offMap = 0; this.rained = 0; }
+
   clear() {
     this.d.set(this.base); this.qW.fill(0); this.qE.fill(0); this.qN.fill(0); this.qS.fill(0);
     this.offMap = 0; this.rained = 0;
   }
 }
 
-export function createRain({ terrain, pivot, camera, statsEl }) {
+export function createRain({ terrain, pivot, camera, statsEl, gaugeUI }) {
   const grid = terrain.gridData(GRID_W);
   const sim = new WaterSim(grid);
   const { gw, gh } = grid;
+  let settled = false;
+  const ensureSettled = () => { if (!settled) { sim.settle(300); settled = true; if (gauge) gauge.reset(); } };
+  const gauge = gaugeUI ? createGauge({ terrain, pivot, camera, sim, grid, ui: gaugeUI }) : null;
+  if (gauge) gauge.init();
 
   // Water overlay: one RGBA texel per sim cell, draped over the terrain mesh.
   const px = new Uint8Array(gw * gh * 4);
@@ -238,6 +246,7 @@ export function createRain({ terrain, pivot, camera, statsEl }) {
     cloud.position.set(cloudPos.x, cloudHeight + Math.sin(performance.now() / 700) * 0.03, cloudPos.y);
     updateDrops(dt);
     for (let s = 0; s < SUBSTEPS; s++) sim.step(SIM_DT);
+    if (gauge) gauge.update(SUBSTEPS * SIM_DT);
     paintWater();
     statClock += dt;
     if (statClock > 0.25 && statsEl) {
@@ -248,10 +257,15 @@ export function createRain({ terrain, pivot, camera, statsEl }) {
   }
 
   return {
-    enter() { active = true; overlay.visible = cloud.visible = drops.visible = true; if (waterLayer) waterLayer.visible = true; },
-    exit() { active = false; overlay.visible = cloud.visible = drops.visible = false; if (waterLayer) waterLayer.visible = false; dropOn.fill(0); },
+    enter() { ensureSettled(); active = true; overlay.visible = cloud.visible = drops.visible = true; if (waterLayer) waterLayer.visible = true; if (gauge) gauge.show(true); },
+    exit() { active = false; overlay.visible = cloud.visible = drops.visible = false; if (waterLayer) waterLayer.visible = false; if (gauge) gauge.show(false); dropOn.fill(0); },
     aim, update,
-    reset() { sim.clear(); paintWater(); },
+    reset() { sim.clear(); sim.settle(300); if (gauge) gauge.reset(); paintWater(); },
+    /** A tap: move the gauge to the nearest river or stream. */
+    click(clientX, clientY, rect) {
+      const hit = pick(clientX, clientY, rect);
+      return !!(hit && gauge && gauge.moveTo(hit[0], hit[1]));
+    },
     setIntensity(v) { intensity = v; },
     sim,
   };

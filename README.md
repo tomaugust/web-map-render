@@ -20,6 +20,13 @@ OpenStreetMap has no widths or depths, and no open dataset covers river or small
 UK Lakes Portal has outlines only, with depth recorded for almost none). Streams are 0.4-0.5 m deep, the river
 about 3 m, and lakes 0.8-3.5 m by size, with shelving shores.
 
+A **virtual river gauge** sits on the stream that drains the largest area (found by flow accumulation over the
+terrain): a small post on the map, a dashed tag line to a chart in the corner, and a scrolling graph of
+discharge (m³/s) over the last five simulated hours (each real second is about 5 simulated minutes). The
+reading is the simulation's own flow out of the gauge's cell, so rain that reaches the stream shows up as a
+rising limb, a peak and a slow recession. Click or tap another river or stream to move the gauge. Flows are
+for illustration (the sim is a time-lapse on a coarse grid with exaggerated rainfall), not calibrated to real gauges.
+
 ## Pollution tab
 
 Switch to **Pollution** (or open `#smoke`). A model factory sits on the map (click anywhere to move it) and
@@ -77,6 +84,7 @@ your own tile source before using this for anything real.
 - `src/vectors.js` – loads the vector data and rasterises it (water depth map, water layer, per-class coverage).
 - `scripts/fetch-vectors.mjs` – downloads the vector tiles for the parish into `data/vectors.geojson`.
 - `src/fire.js` – fuel map from the vector data (colour-guessing fallback), fire-spread model, overlays, flames and smoke.
+- `src/gauge.js` – the virtual river gauge: site selection, discharge reading, map marker, tag line and scrolling chart.
 - `src/pick.js` – pointer-to-terrain picking shared by the Rain and Smoke tabs.
 - `src/main.js` – scene, tabs, lighting, pin, drag/zoom controls, popout.
 - `src/geo.js` – Web Mercator helpers.

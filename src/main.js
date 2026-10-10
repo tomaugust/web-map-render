@@ -60,7 +60,7 @@ const hintEl = document.getElementById('hint');
 const panels = { rain: document.getElementById('rain-controls'), smoke: document.getElementById('smoke-controls'), fire: document.getElementById('fire-controls') };
 const HINTS = {
   terrain: 'Drag to turn · scroll to zoom · click the pin',
-  rain: 'Move the mouse to steer the cloud · drag to turn',
+  rain: 'Move the mouse to steer the cloud · click a river to move the gauge · drag to turn',
   smoke: 'Click the map to place the factory · drag to turn',
   fire: 'Tap the map to start a wildfire · drag to turn',
 };
@@ -80,7 +80,11 @@ async function init() {
   const [lon, lat] = terrain.centroidLonLat;
   document.getElementById('po-coords').textContent = `${lat.toFixed(4)}° N, ${Math.abs(lon).toFixed(4)}° W`;
   document.getElementById('po-elev').textContent = `${Math.round(terrain.pinHeightM)} m above sea level`;
-  rain = createRain({ terrain, pivot, camera, statsEl: document.getElementById('rain-stats') });
+  rain = createRain({ terrain, pivot, camera, statsEl: document.getElementById('rain-stats'), gaugeUI: {
+    card: document.getElementById('gauge-card'), chart: document.getElementById('gauge-chart'), now: document.getElementById('gauge-now'),
+    peak: document.getElementById('gauge-peak'), svg: document.getElementById('gauge-link'),
+    line: document.querySelector('#gauge-link line'), dot: document.querySelector('#gauge-link circle'),
+  } });
   smoke = createSmoke({ terrain, pivot, camera, renderer, lightDir: sun.position, ui: {
     onInfo: (t) => { document.getElementById('smoke-info').textContent = t; },
     onWind: (w) => { windUI.nowFrom = w.fromDeg; document.getElementById('wind-now').textContent = w.text; },
@@ -178,6 +182,7 @@ function end(e) {
     if (down && down.moved < 6) { // a tap, not a drag
       if (mode === 'terrain') setPopout(pinUnder(e));
       else if (mode === 'smoke') smoke.click(e.clientX, e.clientY, canvas.getBoundingClientRect());
+      else if (mode === 'rain') rain.click(e.clientX, e.clientY, canvas.getBoundingClientRect());
       else if (mode === 'fire') fire.click(e.clientX, e.clientY, canvas.getBoundingClientRect());
     }
     down = null;
