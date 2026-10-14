@@ -37,7 +37,7 @@ wander, so the plume snakes and swings). The compass shows the set wind (faint) 
 The smoke is a GPU particle simulation (about 147,000 particles, `?n=256` etc. in the URL changes the
 count): hot smoke rises on buoyancy while entrainment cools and slows it, strong wind bends the plume
 over, and a divergence-free curl-noise field adds swirling eddies that grow with the plume's age so it
-billows further downwind. Puffs are drawn as soft, sun-lit sprites that lighten as they dilute. It
+billows further downwind. Puffs are drawn as soft, sun-lit sprites with a smooth falloff to zero (no visible rim) that lighten as they dilute; if the frame rate drops, fewer, larger and softer puffs are drawn so it blurs instead of going grainy. It
 needs WebGL2 with float render targets (most desktop browsers). Shown as a x30 time-lapse; it is
 illustrative, not a dispersion model.
 

@@ -183,7 +183,7 @@ export function createGpuParticles({ terrain, pivot, camera, renderer, lightDir,
     uniforms: {
       tPos: { value: null }, uScale: { value: 1 }, uLife: { value: life }, uMaxPt: { value: Math.min(60, maxPoint) }, uKeep: { value: 1 },
       uDensity: { value: look.density }, uSize0: { value: look.size0 }, uSizeGrow: { value: look.sizeGrow }, uFadePow: { value: look.fadePow },
-      uFadeIn: { value: look.fadeIn }, uLightAmt: { value: look.lightAmt }, uLight: { value: new THREE.Vector3(0, 1, 0) },
+      uFadeIn: { value: look.fadeIn }, uLightAmt: { value: look.lightAmt }, uSoft: { value: look.soft ? 1 : 0 }, uLight: { value: new THREE.Vector3(0, 1, 0) },
       uCol0: { value: col(look.col0) }, uCol1: { value: col(look.col1) }, uCol2: { value: col(look.col2) },
     },
     vertexShader: `
@@ -197,13 +197,13 @@ export function createGpuParticles({ terrain, pivot, camera, renderer, lightDir,
         vSeed = h21(aRef * 97.3);
         vec4 mv = modelViewMatrix * vec4(P.xyz, 1.0);
         gl_Position = projectionMatrix * mv;
-        float r = (uSize0 + uSizeGrow * pow(f, 0.6)) * (0.65 + 0.7 * vSeed);
+        float r = (uSize0 + uSizeGrow * pow(f, 0.6)) * (0.65 + 0.7 * vSeed) * pow(1.0 / uKeep, 0.5);
         gl_PointSize = clamp(r * uScale / -mv.z, 1.5, uMaxPt);
-        vA = uDensity * smoothstep(0.0, uFadeIn, P.w) * pow(1.0 - f, uFadePow) * (0.6 + 0.8 * h21(aRef * 41.7)) * pow(1.0 / uKeep, 0.85);
+        vA = uDensity * smoothstep(0.0, uFadeIn, P.w) * pow(1.0 - f, uFadePow) * (0.6 + 0.8 * h21(aRef * 41.7)) * pow(1.0 / uKeep, 0.15);
         vAge = f;
       }`,
     fragmentShader: `
-      uniform vec3 uLight, uCol0, uCol1, uCol2; uniform float uLightAmt;
+      uniform vec3 uLight, uCol0, uCol1, uCol2; uniform float uLightAmt, uSoft;
       varying float vA; varying float vAge; varying float vSeed;
       float hh(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
       float vn(vec2 p) {
@@ -215,9 +215,19 @@ export function createGpuParticles({ terrain, pivot, camera, renderer, lightDir,
         float ang = vSeed * 6.2831853, cs = cos(ang), sn = sin(ang);
         vec2 r = vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);
         float n1 = vn(r * 2.4 + vSeed * 31.0), n2 = vn(r * 5.1 + vSeed * 17.0 + 7.3);
-        float d2 = dot(q, q) * (0.65 + 0.9 * n1);
-        if (d2 > 1.0) discard;
-        float a = exp(-d2 * 3.4) * vA * (0.45 + 0.9 * n2);
+        float d2 = dot(q, q);
+        float a;
+        if (uSoft > 0.5) {
+          // Soft smoke: a bell that reaches exactly zero at the rim, with a wobbling outline.
+          float rad = length(q) * (0.78 + 0.5 * vn(r * 2.0 + vSeed * 31.0));
+          float k = smoothstep(1.0, 0.0, rad);
+          a = k * k * k * vA * (0.7 + 0.6 * n2);
+          if (a < 0.0015) discard;
+        } else {
+          d2 *= (0.65 + 0.9 * n1);
+          if (d2 > 1.0) discard;
+          a = exp(-d2 * 3.4) * vA * (0.45 + 0.9 * n2);
+        }
         vec3 c = mix(uCol0, uCol1, smoothstep(0.0, 0.35, vAge));
         c = mix(c, uCol2, smoothstep(0.3, 1.0, vAge));
         float lit = 0.5 + 0.5 * clamp(dot(normalize(vec3(q * 0.7, sqrt(max(0.0, 1.0 - 0.49 * d2)))), uLight), -1.0, 1.0);

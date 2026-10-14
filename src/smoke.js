@@ -248,7 +248,7 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 3), 3));
   geo.setAttribute('aRef', new THREE.BufferAttribute(ref, 2));
   geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 1e4);
-  const density = 0.15 * Math.pow(384 / SIDE, 2);   // keep overall opacity similar at other particle counts
+  const density = 0.24 * Math.pow(384 / SIDE, 2);   // keep overall opacity similar at other particle counts
   const mat = new THREE.ShaderMaterial({
     transparent: true, depthWrite: false,
     uniforms: { tPos: { value: null }, tVel: { value: null }, uScale: { value: 1 }, uLife: { value: LIFE }, uMaxPt: { value: Math.min(60, diag.maxPoint) }, uKeep: { value: 1 },
@@ -264,10 +264,10 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
         if (P.w < 0.0 || f >= 1.0 || h21(aRef * 57.1) > uKeep) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
         vec4 mv = modelViewMatrix * vec4(P.xyz, 1.0);
         gl_Position = projectionMatrix * mv;
-        float r = (0.014 + 0.095 * pow(f, 0.6)) * (0.65 + 0.7 * vSeed);   // every puff a different size; they stay small so the plume reads as one volume
+        float r = (0.018 + 0.12 * pow(f, 0.6)) * (0.7 + 0.6 * vSeed) * pow(1.0 / uKeep, 0.5);   // fewer puffs drawn -> each one bigger and softer, not a sparse grain   // every puff a different size; they stay small so the plume reads as one volume
         gl_PointSize = clamp(r * uScale / -mv.z, 1.5, uMaxPt);
         float fadeIn = smoothstep(0.0, 8.0, P.w);
-        vA = uDensity * fadeIn * pow(1.0 - f, 1.6) * (0.4 + 0.6 * (1.0 - pow(f, 0.5))) * (0.6 + 0.8 * h21(aRef * 41.7)) * pow(1.0 / uKeep, 0.85);   // fewer puffs drawn -> each a bit stronger
+        vA = uDensity * fadeIn * pow(1.0 - f, 1.6) * (0.4 + 0.6 * (1.0 - pow(f, 0.5))) * (0.6 + 0.8 * h21(aRef * 41.7)) * pow(1.0 / uKeep, 0.15);   // fewer puffs drawn -> each a bit stronger
         vAge = f;
         vH = clamp((P.y - uEmitY) * 2.0, 0.0, 1.0);
       }`,
@@ -283,10 +283,14 @@ export function createSmoke({ terrain, pivot, camera, renderer, ui, lightDir }) 
         float ang = vSeed * 6.2831853, cs = cos(ang), sn = sin(ang);
         vec2 r = vec2(cs * q.x - sn * q.y, sn * q.x + cs * q.y);
         // Wobble the radius with noise so no puff is a clean circle, and break up its density.
-        float n1 = vn(r * 2.4 + vSeed * 31.0), n2 = vn(r * 5.1 + vSeed * 17.0 + 7.3);
-        float d2 = dot(q, q) * (0.65 + 0.9 * n1);
-        if (d2 > 1.0) discard;
-        float a = exp(-d2 * 3.4) * vA * (0.45 + 0.9 * n2);
+        float n1 = vn(r * 2.0 + vSeed * 31.0), n2 = vn(r * 4.3 + vSeed * 17.0 + 7.3);
+        float d2 = dot(q, q);
+        // A smooth bell that reaches exactly zero (with zero slope) at the rim, so there is no edge to see;
+        // the outline wobbles with noise and the density varies gently across the puff.
+        float rad = length(q) * (0.78 + 0.5 * n1);
+        float k = smoothstep(1.0, 0.0, rad);
+        float a = k * k * k * vA * (0.7 + 0.6 * n2);       // cubed: peaked in the middle, so overlapping puffs blend into cloud
+        if (a < 0.0015) discard;
         // Young smoke is dense and dark; it lightens as it dilutes, and the upper, sunnier side of the plume is brighter.
         vec3 col = mix(vec3(0.16, 0.16, 0.17), vec3(0.70, 0.72, 0.76), smoothstep(0.0, 0.8, vAge));
         col *= 0.8 + 0.35 * vH;

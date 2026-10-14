@@ -262,7 +262,7 @@ export function createWildfire({ terrain, pivot, camera, renderer, lightDir, ui 
     smoke = createGpuParticles({
       terrain, pivot, camera, renderer, lightDir, side: COARSE ? 160 : 224, life: 320, timeLapse: 30,
       params: { buoy: 0.16, tauT: 80, tauD: 15, tauH: 10, spawnUp: 5, spawnJit: 1.2, sigma: 1.0, sigmaWind: 0.14, K: 3, Kwind: 0.5, windMix: true, eddyRamp: 0.3 },
-      look: { density: COARSE ? 0.16 : 0.1, size0: 0.012, sizeGrow: 0.07, fadePow: 1.6, fadeIn: 8, lightAmt: 1, adapt: true, renderOrder: 2,
+      look: { density: COARSE ? 0.24 : 0.15, size0: 0.016, sizeGrow: 0.09, fadePow: 1.6, fadeIn: 8, lightAmt: 1, adapt: true, soft: true, renderOrder: 2,
         col0: [0.2, 0.19, 0.19], col1: [0.48, 0.46, 0.45], col2: [0.78, 0.78, 0.8] },
     });
     flames = createGpuParticles({
